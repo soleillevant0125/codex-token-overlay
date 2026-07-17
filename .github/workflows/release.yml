@@ -117,13 +117,14 @@ jobs:
             throw '没有可发布的文件。'
           }
 
-          & gh release view $env:RELEASE_TAG *> $null
+          & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
           $releaseExists = $LASTEXITCODE -eq 0
           if ($releaseExists) {
-            & gh release upload $env:RELEASE_TAG @assets --clobber
+            & gh release upload $env:RELEASE_TAG @assets --repo $env:GITHUB_REPOSITORY --clobber
           }
           else {
             & gh release create $env:RELEASE_TAG @assets `
+              --repo $env:GITHUB_REPOSITORY `
               --title $env:RELEASE_TAG `
               --generate-notes `
               --target $env:GITHUB_SHA
