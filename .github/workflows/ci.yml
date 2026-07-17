@@ -35,14 +35,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore
-        shell: pwsh
-        run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
-
       - name: Test log parsing and CODEX_HOME discovery
         if: matrix.rid == 'win-x64'
         shell: pwsh
         run: .\scripts\Test-LogParser.ps1
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
 
       - name: Publish self-contained single-file executable
         shell: pwsh
