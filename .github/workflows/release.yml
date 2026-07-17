@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.rid }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
+    env:
+      PROJECT_PATH: src/CodexTokenOverlay/CodexTokenOverlay.csproj
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
+
+      - name: Publish self-contained single-file executable
+        shell: pwsh
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP "publish-${{ matrix.rid }}"
+          dotnet publish $env:PROJECT_PATH `
+            --configuration Release `
+            --runtime "${{ matrix.rid }}" `
+            --self-contained true `
+            --no-restore `
+            --output $publishDirectory `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:ContinuousIntegrationBuild=true
+
+          $executable = Join-Path $publishDirectory 'CodexTokenOverlay.exe'
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+          }
+
+      - name: Create ZIP and SHA-256 checksum
+        shell: pwsh
+        run: |
+          $rid = "${{ matrix.rid }}"
+          $publishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid"
+          $stageDirectory = Join-Path $env:RUNNER_TEMP "CodexTokenOverlay-$rid"
+          $assetDirectory = Join-Path $env:RUNNER_TEMP 'release-assets'
+          New-Item -ItemType Directory -Path $stageDirectory -Force | Out-Null
+          New-Item -ItemType Directory -Path $assetDirectory -Force | Out-Null
+
+          Copy-Item -LiteralPath (Join-Path $publishDirectory 'CodexTokenOverlay.exe') -Destination $stageDirectory
+          Copy-Item -LiteralPath 'README.md' -Destination $stageDirectory
+          Copy-Item -LiteralPath 'README.zh-CN.md' -Destination $stageDirectory
+          Copy-Item -LiteralPath 'LICENSE' -Destination $stageDirectory
+
+          $zipName = "CodexTokenOverlay-$rid.zip"
+          $zipPath = Join-Path $assetDirectory $zipName
+          Compress-Archive -Path (Join-Path $stageDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
+
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumPath = "$zipPath.sha256"
+          "$hash  $zipName" | Set-Content -LiteralPath $checksumPath -Encoding utf8NoBOM
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.rid }}
+          path: |
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}.zip
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        run: |
+          $assets = @(Get-ChildItem -LiteralPath 'release-assets' -File | ForEach-Object FullName)
+          if ($assets.Count -eq 0) {
+            throw '没有可发布的文件。'
+          }
+
+          & gh release view $env:RELEASE_TAG *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          if ($releaseExists) {
+            & gh release upload $env:RELEASE_TAG @assets --clobber
+          }
+          else {
+            & gh release create $env:RELEASE_TAG @assets `
+              --title $env:RELEASE_TAG `
+              --generate-notes `
+              --target $env:GITHUB_SHA
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release 发布失败：$env:RELEASE_TAG"
+          }

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-check:
+    name: Publish check (${{ matrix.rid }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
+    env:
+      PROJECT_PATH: src/CodexTokenOverlay/CodexTokenOverlay.csproj
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
+
+      - name: Test log parsing and CODEX_HOME discovery
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: .\scripts\Test-LogParser.ps1
+
+      - name: Publish self-contained single-file executable
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "publish-${{ matrix.rid }}"
+          dotnet publish $env:PROJECT_PATH `
+            --configuration Release `
+            --runtime "${{ matrix.rid }}" `
+            --self-contained true `
+            --no-restore `
+            --output $output `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:ContinuousIntegrationBuild=true
+
+          $executable = Join-Path $output 'CodexTokenOverlay.exe'
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+          }

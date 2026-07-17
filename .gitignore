@@ -1,0 +1,24 @@
+# .NET 构建输出
+bin/
+obj/
+artifacts/
+publish/
+
+# IDE 与用户设置
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# 本地探针输出
+probe.json
+window-probe.json
+ipc-probe.json
+
+# 操作系统临时文件
+Thumbs.db
+Desktop.ini
+.DS_Store
