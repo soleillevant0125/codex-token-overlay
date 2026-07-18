@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>CodexTokenOverlay</AssemblyName>
     <RootNamespace>CodexTokenOverlay</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Authors>soleillevant0125</Authors>
     <Description>A read-only Windows overlay for Codex Desktop token usage.</Description>
     <RepositoryUrl>https://github.com/soleillevant0125/codex-token-overlay</RepositoryUrl>

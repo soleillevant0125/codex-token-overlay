@@ -24,16 +24,20 @@ Download the newest ZIP from [GitHub Releases](../../releases).
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| Windows x64 | `CodexTokenOverlay-win-x64.zip` | Most Intel and AMD Windows computers. |
-| Windows Arm64 | `CodexTokenOverlay-win-arm64.zip` | Windows on Arm devices. |
+| Windows x64 Lite | `CodexTokenOverlay-win-x64-lite.zip` | About 100 KB; requires .NET 10 Desktop Runtime. |
+| Windows x64 Standalone | `CodexTokenOverlay-win-x64.zip` | About 46 MB; no .NET installation and preserves the existing asset name. |
+| Windows Arm64 Lite | `CodexTokenOverlay-win-arm64-lite.zip` | About 100 KB; requires the Arm64 .NET 10 Desktop Runtime. |
+| Windows Arm64 Standalone | `CodexTokenOverlay-win-arm64.zip` | No .NET installation and preserves the existing asset name. |
 | macOS Apple Silicon | `CodexTokenOverlay-macos-arm64.zip` | Recommended for M1, M2, M3, M4, and later M-series Macs. |
 | macOS Intel | `CodexTokenOverlay-macos-x64.zip` | Intel Macs running macOS 14 or later. |
 
-Every ZIP has a neighboring `.sha256` checksum file. Release builds are self-contained: Windows users do not need .NET or PowerShell, and macOS users do not need Xcode, Swift, or Homebrew.
+Every ZIP has a neighboring `.sha256` checksum file. Windows Lite is close to the macOS archive size and contains the same application code as Standalone; it uses a shared system runtime instead of embedding it. Install the matching **Desktop Runtime** from [Microsoft's official .NET 10 download page](https://dotnet.microsoft.com/download/dotnet/10.0). Choose the same-architecture asset without `-lite` if you do not want to install a runtime or are unsure.
+
+No Windows package requires PowerShell. macOS users do not need Xcode, Swift, or Homebrew.
 
 ## Run on Windows
 
-1. Download the ZIP for your Windows architecture.
+1. Download the `-lite.zip` asset when .NET 10 Desktop Runtime is installed; otherwise choose the same architecture without `-lite`.
 2. Extract it anywhere.
 3. Double-click `CodexTokenOverlay.exe`.
 
@@ -42,9 +46,6 @@ The tray menu controls visible fields, placement, task locking, temporary visibi
 Unsigned GitHub executables can trigger Windows SmartScreen. Confirm that the file came from this repository and compare its SHA-256 checksum before choosing **More info > Run anyway**.
 
 ## Run on macOS
-
-> [!NOTE]
-> macOS support is currently marked **Beta** until task switching has also been verified against Codex Desktop on physical Apple Silicon hardware. The parser, IPC state machine, app bundle, signatures, and both CPU builds are checked in CI.
 
 1. Download `CodexTokenOverlay-macos-arm64.zip` for an M-series Mac, or the x64 archive for an Intel Mac.
 2. Extract the ZIP and move `CodexTokenOverlay.app` to `/Applications`.
@@ -58,6 +59,7 @@ A Developer ID Application certificate and Apple notarization are required to re
 ## Requirements and file locations
 
 - Windows 10/11, or macOS 14 or later.
+- Windows Lite requires the architecture-matching .NET 10 Desktop Runtime; Standalone does not.
 - Codex Desktop running under the same interactive user.
 - Read access to Codex Desktop's local session data.
 
@@ -142,11 +144,13 @@ dotnet build .\src\CodexTokenOverlay\CodexTokenOverlay.csproj -c Release
 .\scripts\Test-LogParser.ps1
 ```
 
-Create a local self-contained archive with:
+Create both local Lite and Standalone archives with:
 
 ```powershell
-.\scripts\Publish-Local.ps1 -RuntimeIdentifier win-x64
+.\scripts\Publish-Local.ps1 -RuntimeIdentifier win-x64 -Variant Both
 ```
+
+Set `-Variant` to `Lite` or `Standalone` to build only one form.
 
 ### macOS
 
@@ -163,13 +167,14 @@ The repository's Codex environment exposes the same script as a **Run** action. 
 ./macos/script/package_app.sh \
   --arch "$(uname -m)" \
   --configuration release \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --output artifacts/macos-local
 ```
 
 ## Repository contents
 
 - `src/CodexTokenOverlay`: existing .NET/WinForms Windows application.
+- `packaging/windows`: shared-runtime notice included in Windows Lite archives.
 - `macos/Package.swift`: native SwiftPM package for macOS.
 - `macos/Sources/CodexTokenCore`: session discovery, token parsing, and Unix IPC task routing.
 - `macos/Sources/CodexTokenOverlayMac`: native AppKit menu-bar application.

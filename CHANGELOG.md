@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-18
+
+### Added
+
+- Windows x64 and Arm64 Lite archives using the shared .NET 10 Desktop Runtime.
+- Published-EXE probe coverage and CI size guards for the lightweight Windows build.
+- Existing Windows asset names remain Standalone and continue to require no runtime installation.
+
+### Changed
+
+- New Windows Lite archives are about 100 KB after ZIP packaging instead of embedding roughly 50 MB of runtime files.
+- Removed the macOS Beta label after successful physical-device validation.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added
@@ -28,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Configurable visible fields and overlay placement through the system tray.
 - Per-user settings persisted under Local AppData.
 
-[Unreleased]: ../../compare/v0.2.0...HEAD
+[Unreleased]: ../../compare/v0.2.1...HEAD
+[0.2.1]: ../../releases/tag/v0.2.1
 [0.2.0]: ../../releases/tag/v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0

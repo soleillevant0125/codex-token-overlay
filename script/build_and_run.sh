@@ -22,7 +22,7 @@ pkill -x "$PROCESS_NAME" >/dev/null 2>&1 || true
 "$ROOT_DIR/macos/script/package_app.sh" \
   --arch "$ARCH" \
   --configuration debug \
-  --version 0.2.0-dev \
+  --version 0.2.1-dev \
   --output "$DIST_DIR"
 
 open_app() {

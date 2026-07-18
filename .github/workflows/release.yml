@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example v0.2.0
+        description: Existing release tag, for example v0.2.1
         required: true
         type: string
 
@@ -42,16 +42,32 @@ jobs:
         shell: pwsh
         run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
 
-      - name: Publish self-contained single-file executable
+      - name: Publish Lite and Standalone executables
         shell: pwsh
         run: |
-          $publishDirectory = Join-Path $env:RUNNER_TEMP "publish-${{ matrix.rid }}"
+          $rid = "${{ matrix.rid }}"
+          $litePublishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid-lite"
+          $standalonePublishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid-standalone"
+
           dotnet publish $env:PROJECT_PATH `
             --configuration Release `
-            --runtime "${{ matrix.rid }}" `
+            --runtime $rid `
+            --self-contained false `
+            --no-restore `
+            --output $litePublishDirectory `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=false `
+            -p:EnableCompressionInSingleFile=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:ContinuousIntegrationBuild=true
+
+          dotnet publish $env:PROJECT_PATH `
+            --configuration Release `
+            --runtime $rid `
             --self-contained true `
             --no-restore `
-            --output $publishDirectory `
+            --output $standalonePublishDirectory `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
@@ -59,41 +75,83 @@ jobs:
             -p:DebugSymbols=false `
             -p:ContinuousIntegrationBuild=true
 
-          $executable = Join-Path $publishDirectory 'CodexTokenOverlay.exe'
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+          $liteExecutable = Join-Path $litePublishDirectory 'CodexTokenOverlay.exe'
+          $standaloneExecutable = Join-Path $standalonePublishDirectory 'CodexTokenOverlay.exe'
+          foreach ($executable in @($liteExecutable, $standaloneExecutable)) {
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+            }
+          }
+
+          $liteSize = (Get-Item -LiteralPath $liteExecutable).Length
+          $standaloneSize = (Get-Item -LiteralPath $standaloneExecutable).Length
+          if ($liteSize -ge 1MB) {
+            throw "Lite EXE 超过 1 MiB：$liteSize bytes"
+          }
+          if ($standaloneSize -le $liteSize) {
+            throw "Standalone EXE 体积异常：$standaloneSize bytes"
+          }
+
+          Write-Host "Lite: $liteSize bytes; Standalone: $standaloneSize bytes"
+
+          $architecture = $rid.Substring($rid.IndexOf('-') + 1)
+          .\scripts\Test-PeArchitecture.ps1 -ExecutablePath $liteExecutable -Architecture $architecture
+          .\scripts\Test-PeArchitecture.ps1 -ExecutablePath $standaloneExecutable -Architecture $architecture
+
+          if ($rid -eq 'win-x64') {
+            .\scripts\Test-PublishedExecutable.ps1 -ExecutablePath $liteExecutable
           }
 
       - name: Create ZIP and SHA-256 checksum
         shell: pwsh
         run: |
           $rid = "${{ matrix.rid }}"
-          $publishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid"
-          $stageDirectory = Join-Path $env:RUNNER_TEMP "CodexTokenOverlay-$rid"
+          $litePublishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid-lite"
+          $standalonePublishDirectory = Join-Path $env:RUNNER_TEMP "publish-$rid-standalone"
           $assetDirectory = Join-Path $env:RUNNER_TEMP 'release-assets'
-          New-Item -ItemType Directory -Path $stageDirectory -Force | Out-Null
           New-Item -ItemType Directory -Path $assetDirectory -Force | Out-Null
 
-          Copy-Item -LiteralPath (Join-Path $publishDirectory 'CodexTokenOverlay.exe') -Destination $stageDirectory
-          Copy-Item -LiteralPath 'README.md' -Destination $stageDirectory
-          Copy-Item -LiteralPath 'README.zh-CN.md' -Destination $stageDirectory
-          Copy-Item -LiteralPath 'LICENSE' -Destination $stageDirectory
+          $packages = @(
+            @{
+              PublishDirectory = $litePublishDirectory
+              AssetName = "CodexTokenOverlay-$rid-lite"
+              IsLite = $true
+            },
+            @{
+              PublishDirectory = $standalonePublishDirectory
+              AssetName = "CodexTokenOverlay-$rid"
+              IsLite = $false
+            }
+          )
 
-          $zipName = "CodexTokenOverlay-$rid.zip"
-          $zipPath = Join-Path $assetDirectory $zipName
-          Compress-Archive -Path (Join-Path $stageDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          foreach ($package in $packages) {
+            $stageDirectory = Join-Path $env:RUNNER_TEMP $package.AssetName
+            New-Item -ItemType Directory -Path $stageDirectory -Force | Out-Null
 
-          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $checksumPath = "$zipPath.sha256"
-          "$hash  $zipName" | Set-Content -LiteralPath $checksumPath -Encoding utf8NoBOM
+            Copy-Item -LiteralPath (Join-Path $package.PublishDirectory 'CodexTokenOverlay.exe') -Destination $stageDirectory
+            Copy-Item -LiteralPath 'README.md' -Destination $stageDirectory
+            Copy-Item -LiteralPath 'README.zh-CN.md' -Destination $stageDirectory
+            Copy-Item -LiteralPath 'LICENSE' -Destination $stageDirectory
+            if ($package.IsLite) {
+              Copy-Item -LiteralPath 'packaging/windows/INSTALL-DOTNET-RUNTIME.txt' -Destination $stageDirectory
+            }
+
+            $zipName = "$($package.AssetName).zip"
+            $zipPath = Join-Path $assetDirectory $zipName
+            Compress-Archive -Path (Join-Path $stageDirectory '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
+
+            $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $checksumPath = "$zipPath.sha256"
+            "$hash  $zipName" | Set-Content -LiteralPath $checksumPath -Encoding utf8NoBOM
+          }
 
       - name: Upload release assets
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.rid }}
           path: |
-            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}.zip
-            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}.zip.sha256
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}*.zip
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.rid }}*.zip.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -196,8 +254,25 @@ jobs:
         shell: pwsh
         run: |
           $assets = @(Get-ChildItem -LiteralPath 'release-assets' -File | ForEach-Object FullName)
-          if ($assets.Count -eq 0) {
-            throw '没有可发布的文件。'
+          $expectedAssetNames = @(
+            'CodexTokenOverlay-win-x64.zip',
+            'CodexTokenOverlay-win-x64.zip.sha256',
+            'CodexTokenOverlay-win-x64-lite.zip',
+            'CodexTokenOverlay-win-x64-lite.zip.sha256',
+            'CodexTokenOverlay-win-arm64.zip',
+            'CodexTokenOverlay-win-arm64.zip.sha256',
+            'CodexTokenOverlay-win-arm64-lite.zip',
+            'CodexTokenOverlay-win-arm64-lite.zip.sha256',
+            'CodexTokenOverlay-macos-arm64.zip',
+            'CodexTokenOverlay-macos-arm64.zip.sha256',
+            'CodexTokenOverlay-macos-x64.zip',
+            'CodexTokenOverlay-macos-x64.zip.sha256'
+          )
+          $actualAssetNames = @($assets | ForEach-Object { Split-Path -Leaf $_ })
+          $assetDifference = @(Compare-Object -ReferenceObject $expectedAssetNames -DifferenceObject $actualAssetNames)
+          if ($assetDifference.Count -ne 0) {
+            $details = $assetDifference | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }
+            throw "发布文件清单不完整或含有意外文件：`n$($details -join "`n")"
           }
 
           & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null

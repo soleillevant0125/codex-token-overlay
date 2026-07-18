@@ -1,0 +1,14 @@
+Codex Token Overlay Lite / 轻量版
+
+This small package requires the Microsoft .NET 10 Desktop Runtime that matches
+your Windows architecture. Download it from Microsoft's official page:
+
+https://dotnet.microsoft.com/download/dotnet/10.0
+
+此轻量包需要安装与 Windows 架构一致的 Microsoft .NET 10 Desktop Runtime。
+请从上面的微软官方页面下载“桌面运行时”。
+
+If you do not want to install a shared runtime, download the asset with the
+same architecture whose name does not include "-lite".
+
+如果不希望安装共享运行时，请改用相同架构、文件名中不含“-lite”的版本。

@@ -44,16 +44,32 @@ jobs:
         shell: pwsh
         run: dotnet restore $env:PROJECT_PATH --runtime "${{ matrix.rid }}"
 
-      - name: Publish self-contained single-file executable
+      - name: Publish Lite and Standalone executables
         shell: pwsh
         run: |
-          $output = Join-Path $env:RUNNER_TEMP "publish-${{ matrix.rid }}"
+          $rid = "${{ matrix.rid }}"
+          $liteOutput = Join-Path $env:RUNNER_TEMP "publish-$rid-lite"
+          $standaloneOutput = Join-Path $env:RUNNER_TEMP "publish-$rid-standalone"
+
           dotnet publish $env:PROJECT_PATH `
             --configuration Release `
-            --runtime "${{ matrix.rid }}" `
+            --runtime $rid `
+            --self-contained false `
+            --no-restore `
+            --output $liteOutput `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=false `
+            -p:EnableCompressionInSingleFile=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:ContinuousIntegrationBuild=true
+
+          dotnet publish $env:PROJECT_PATH `
+            --configuration Release `
+            --runtime $rid `
             --self-contained true `
             --no-restore `
-            --output $output `
+            --output $standaloneOutput `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
@@ -61,9 +77,31 @@ jobs:
             -p:DebugSymbols=false `
             -p:ContinuousIntegrationBuild=true
 
-          $executable = Join-Path $output 'CodexTokenOverlay.exe'
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+          $liteExecutable = Join-Path $liteOutput 'CodexTokenOverlay.exe'
+          $standaloneExecutable = Join-Path $standaloneOutput 'CodexTokenOverlay.exe'
+          foreach ($executable in @($liteExecutable, $standaloneExecutable)) {
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
+            }
+          }
+
+          $liteSize = (Get-Item -LiteralPath $liteExecutable).Length
+          $standaloneSize = (Get-Item -LiteralPath $standaloneExecutable).Length
+          if ($liteSize -ge 1MB) {
+            throw "Lite EXE 超过 1 MiB：$liteSize bytes"
+          }
+          if ($standaloneSize -le $liteSize) {
+            throw "Standalone EXE 体积异常：$standaloneSize bytes"
+          }
+
+          Write-Host "Lite: $liteSize bytes; Standalone: $standaloneSize bytes"
+
+          $architecture = $rid.Substring($rid.IndexOf('-') + 1)
+          .\scripts\Test-PeArchitecture.ps1 -ExecutablePath $liteExecutable -Architecture $architecture
+          .\scripts\Test-PeArchitecture.ps1 -ExecutablePath $standaloneExecutable -Architecture $architecture
+
+          if ($rid -eq 'win-x64') {
+            .\scripts\Test-PublishedExecutable.ps1 -ExecutablePath $liteExecutable
           }
 
   macos-check:
@@ -104,7 +142,7 @@ jobs:
           bash macos/script/package_app.sh \
             --arch "${{ matrix.arch }}" \
             --configuration release \
-            --version 0.2.0 \
+            --version 0.2.1 \
             --output "$output"
 
           app="$output/CodexTokenOverlay.app"
