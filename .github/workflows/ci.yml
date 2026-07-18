@@ -65,3 +65,52 @@ jobs:
           if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
             throw "发布结果缺少 CodexTokenOverlay.exe：$executable"
           }
+
+  macos-check:
+    name: macOS check (${{ matrix.asset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            asset: macos-arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            asset: macos-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Show Swift toolchain
+        run: swift --version
+
+      - name: Reject unsafe package output paths
+        shell: bash
+        run: |
+          if bash macos/script/package_app.sh --arch "${{ matrix.arch }}" --output ..; then
+            echo "package_app.sh accepted an unsafe output path" >&2
+            exit 1
+          fi
+
+      - name: Test log parsing and task routing
+        run: swift test --package-path macos
+
+      - name: Build and validate app bundle
+        shell: bash
+        run: |
+          output="$RUNNER_TEMP/package-${{ matrix.asset }}"
+          bash macos/script/package_app.sh \
+            --arch "${{ matrix.arch }}" \
+            --configuration release \
+            --version 0.2.0 \
+            --output "$output"
+
+          app="$output/CodexTokenOverlay.app"
+          binary="$app/Contents/MacOS/CodexTokenOverlayMac"
+          test -d "$app"
+          test -x "$binary"
+          plutil -lint "$app/Contents/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -archs "$binary" | grep -qw "${{ matrix.arch }}"

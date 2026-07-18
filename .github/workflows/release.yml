@@ -7,16 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag, for example v0.1.0
+        description: Existing release tag, for example v0.2.0
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    name: Build (${{ matrix.rid }})
+  build-windows:
+    name: Build Windows (${{ matrix.rid }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -29,6 +29,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          persist-credentials: false
 
       - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v5
@@ -94,10 +97,90 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-macos:
+    name: Build macOS (${{ matrix.asset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            asset: macos-arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            asset: macos-x64
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Test log parsing and task routing
+        run: swift test --package-path macos
+
+      - name: Build app bundle
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vMAJOR.MINOR.PATCH: $RELEASE_TAG" >&2
+            exit 2
+          fi
+          version="${RELEASE_TAG#v}"
+          output="$RUNNER_TEMP/package-${{ matrix.asset }}"
+          bash macos/script/package_app.sh \
+            --arch "${{ matrix.arch }}" \
+            --configuration release \
+            --version "$version" \
+            --output "$output"
+
+          app="$output/CodexTokenOverlay.app"
+          binary="$app/Contents/MacOS/CodexTokenOverlayMac"
+          test -d "$app"
+          test -x "$binary"
+          plutil -lint "$app/Contents/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -archs "$binary" | grep -qw "${{ matrix.arch }}"
+
+      - name: Create ZIP and SHA-256 checksum
+        shell: bash
+        run: |
+          asset="${{ matrix.asset }}"
+          package_directory="$RUNNER_TEMP/package-$asset"
+          stage_directory="$RUNNER_TEMP/CodexTokenOverlay-$asset"
+          asset_directory="$RUNNER_TEMP/release-assets"
+          mkdir -p "$stage_directory" "$asset_directory"
+
+          ditto "$package_directory/CodexTokenOverlay.app" "$stage_directory/CodexTokenOverlay.app"
+          cp README.md README.zh-CN.md LICENSE "$stage_directory/"
+
+          zip_name="CodexTokenOverlay-$asset.zip"
+          zip_path="$asset_directory/$zip_name"
+          ditto -c -k --sequesterRsrc --keepParent "$stage_directory" "$zip_path"
+          read -r hash _ < <(shasum -a 256 "$zip_path")
+          printf '%s  %s\n' "$hash" "$zip_name" >"$zip_path.sha256"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.asset }}
+          path: |
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.asset }}.zip
+            ${{ runner.temp }}/release-assets/CodexTokenOverlay-${{ matrix.asset }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs:
+      - build-windows
+      - build-macos
     runs-on: windows-latest
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -127,7 +210,7 @@ jobs:
               --repo $env:GITHUB_REPOSITORY `
               --title $env:RELEASE_TAG `
               --generate-notes `
-              --target $env:GITHUB_SHA
+              --verify-tag
           }
 
           if ($LASTEXITCODE -ne 0) {

@@ -3,6 +3,9 @@ bin/
 obj/
 artifacts/
 publish/
+.build/
+dist/
+.swiftpm/
 
 # IDE 与用户设置
 .vs/

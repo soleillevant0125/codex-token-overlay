@@ -2,142 +2,181 @@
 
 [简体中文](README.zh-CN.md)
 
-Codex Token Overlay is a small, standalone Windows utility that displays token usage for the task currently selected in Codex Desktop. It runs in the system tray and shows a click-through status strip attached to the Codex window.
+Codex Token Overlay is a read-only desktop companion that shows token usage for the task currently selected in Codex Desktop. It supports Windows and macOS, follows idle task switches through Codex's local IPC channel, and reads token metrics from local JSONL session logs.
 
 > [!IMPORTANT]
-> This is an unofficial community project. It is not developed, endorsed, or supported by OpenAI. It depends on Codex Desktop's local JSONL session format and internal IPC messages, which may change in future Codex releases.
+> This is an unofficial community project. It is not developed, endorsed, or supported by OpenAI. Codex Desktop's JSONL schema and IPC messages are internal implementation details and may change in a future Codex release.
 
 ## Features
 
-- Follows the task currently selected in Codex Desktop, including tasks that are not actively running.
-- Updates when Codex appends token data to its local JSONL session log.
-- Displays total, input, output, cache-hit, derived cache-miss, reasoning, and context-window usage.
-- Lets you choose which fields are visible from the tray menu.
-- Supports automatic placement, inside top-right, and inside bottom-right.
-- Stays click-through and does not take keyboard focus from Codex.
-- Falls back to the most recently updated root Codex Desktop session when internal IPC is unavailable.
-- Stores display preferences per Windows user.
+- Follows the task selected in Codex Desktop, including a task that is not currently running.
+- Refreshes after a task switch even when that task's log has not changed.
+- Shows total, input, output, cache-hit, derived cache-miss, reasoning, and context-window token metrics.
+- Lets you choose exactly which fields are visible.
+- Uses a click-through floating strip and tray icon on Windows.
+- Uses a native menu-bar item on macOS, with launch-at-login control in its menu.
+- Falls back to the newest root Codex Desktop session when internal IPC is unavailable.
+- Reads local files only; it has no telemetry, analytics, network API, or upload feature.
 
-## Download and run
+## Downloads
 
-1. Open the repository's [Releases](../../releases) page.
-2. Download the ZIP that matches your computer:
-   - `win-x64` for most Intel and AMD Windows PCs.
-   - `win-arm64` for Windows on Arm devices.
-3. Extract the ZIP anywhere you like.
-4. Double-click `CodexTokenOverlay.exe`.
+Download the newest ZIP from [GitHub Releases](../../releases).
 
-The published executable is self-contained. It does **not** require PowerShell, the .NET runtime, or the .NET SDK. The extracted folder may be placed anywhere; the application does not rely on a fixed installation path.
+| Platform | Asset | Notes |
+| --- | --- | --- |
+| Windows x64 | `CodexTokenOverlay-win-x64.zip` | Most Intel and AMD Windows computers. |
+| Windows Arm64 | `CodexTokenOverlay-win-arm64.zip` | Windows on Arm devices. |
+| macOS Apple Silicon | `CodexTokenOverlay-macos-arm64.zip` | Recommended for M1, M2, M3, M4, and later M-series Macs. |
+| macOS Intel | `CodexTokenOverlay-macos-x64.zip` | Intel Macs running macOS 14 or later. |
 
-The status strip appears while a recognized Codex Desktop window is in the foreground. Right-click the tray icon to select fields, change placement, lock the current task, temporarily hide the strip, or exit.
+Every ZIP has a neighboring `.sha256` checksum file. Release builds are self-contained: Windows users do not need .NET or PowerShell, and macOS users do not need Xcode, Swift, or Homebrew.
 
-## Requirements
+## Run on Windows
 
-- Windows only (`win-x64` or `win-arm64`).
-- Codex Desktop running under the same interactive Windows user.
-- Read access to Codex Desktop's local session logs.
+1. Download the ZIP for your Windows architecture.
+2. Extract it anywhere.
+3. Double-click `CodexTokenOverlay.exe`.
 
-The application checks the session directory in this order:
+The tray menu controls visible fields, placement, task locking, temporary visibility, and exit. The floating strip appears while a recognized Codex Desktop window is in the foreground.
 
-1. `%CODEX_HOME%\sessions`, when `CODEX_HOME` is set.
-2. `%USERPROFILE%\.codex\sessions`, the default Codex location.
+Unsigned GitHub executables can trigger Windows SmartScreen. Confirm that the file came from this repository and compare its SHA-256 checksum before choosing **More info > Run anyway**.
 
-No particular location is required for `CodexTokenOverlay.exe` itself.
+## Run on macOS
+
+> [!NOTE]
+> macOS support is currently marked **Beta** until task switching has also been verified against Codex Desktop on physical Apple Silicon hardware. The parser, IPC state machine, app bundle, signatures, and both CPU builds are checked in CI.
+
+1. Download `CodexTokenOverlay-macos-arm64.zip` for an M-series Mac, or the x64 archive for an Intel Mac.
+2. Extract the ZIP and move `CodexTokenOverlay.app` to `/Applications`.
+3. Open the app. Its token display appears in the macOS menu bar; there is no Dock icon.
+4. Click the menu-bar text to choose fields, lock the current task, enable launch at login, or quit.
+
+The current public macOS archives are ad-hoc signed, not Developer ID notarized. On first launch, Gatekeeper may require you to Control-click the app and choose **Open**, or approve it under **System Settings > Privacy & Security**. Only do this after confirming the download source and checksum. No Terminal command or global security bypass is required.
+
+A Developer ID Application certificate and Apple notarization are required to remove this first-launch trust prompt. The repository is packaging-ready for that step, but no Apple certificate is stored in this project.
+
+## Requirements and file locations
+
+- Windows 10/11, or macOS 14 or later.
+- Codex Desktop running under the same interactive user.
+- Read access to Codex Desktop's local session data.
+
+The session directory is resolved in this order:
+
+1. `--sessions <path>` when supplied by a developer or test runner.
+2. `$CODEX_HOME/sessions` when `CODEX_HOME` is set.
+3. The default `~/.codex/sessions` directory.
+
+The application itself can be stored anywhere, although `/Applications` is recommended on macOS so launch-at-login and Gatekeeper behavior are predictable.
+
+Preferences are stored per user:
+
+- Windows: `%LOCALAPPDATA%\CodexTokenOverlay\settings.json`
+- macOS: the standard preferences domain `io.github.soleillevant0125.CodexTokenOverlay`
 
 ## Metrics
 
 | Field | Meaning |
 | --- | --- |
-| Total | `total_token_usage.total_tokens` accumulated for the selected task. |
+| Total | Accumulated `total_token_usage.total_tokens` for the selected task. |
 | Input | Accumulated input tokens. |
 | Output | Accumulated output tokens. |
-| Cache hit | Accumulated cached input tokens. This is a subset of input tokens. |
-| Cache miss | Derived as `input tokens - cached input tokens`. |
+| Cache hit | Accumulated cached input tokens; this is a subset of input. |
+| Cache miss | Derived as `max(0, input - cached input)`. |
 | Context | Tokens used by the latest model call compared with `model_context_window`. |
-| Reasoning | Accumulated reasoning output tokens when present in the log. |
+| Reasoning | Accumulated reasoning output tokens when present. |
 | Task ID | The Codex conversation/thread identifier. |
 
-These values describe local session-log events. They are **not** an invoice, API charge calculation, or authoritative ChatGPT plan-usage counter.
+These values describe local session-log events. They are not an invoice, an API charge calculation, or an authoritative ChatGPT plan-usage counter.
 
-## How it works
+## How task following works
 
-Codex Token Overlay is read-only:
+The app never modifies Codex data:
 
-1. It listens to Codex Desktop's local internal IPC channel to learn which task is selected.
-2. It locates the corresponding root-session JSONL file in the Codex session directory.
-3. It reads the most recent complete `token_count` event and refreshes the strip when the log changes.
-4. If IPC is unavailable, it falls back to the newest root Codex Desktop session log.
+1. It connects as a read-only client to Codex Desktop's local IPC endpoint.
+   - Windows: `\\.\pipe\codex-ipc`
+   - macOS: `$CODEX_HOME/ipc/ipc.sock`, with compatible legacy socket fallbacks
+2. It listens for the task ID followed by the active Codex window.
+3. It finds the matching root-session JSONL file and reads the newest complete `token_count` event.
+4. A task-ID change forces an immediate parse, so switching to an idle task does not depend on a new log write.
+5. If IPC is unavailable, it shows the newest Codex Desktop root session instead.
 
-The IPC protocol and JSONL schema are internal Codex implementation details, not a public compatibility contract. A future Codex Desktop update may temporarily break task detection or metric parsing until this project is updated.
+On macOS, the app validates that an IPC path is a Unix socket owned by the current user and that its directory is not writable by another user. It only connects; it never creates, deletes, or replaces Codex's socket.
 
 ## Privacy
 
-- Session files are read locally and are never modified.
-- The application contains no telemetry, analytics, network API, or upload function.
-- Token values and task identifiers remain on your computer.
-- Preferences are stored in `%LOCALAPPDATA%\CodexTokenOverlay\settings.json`.
+- Session files are read locally and never modified.
+- Token values and task identifiers stay on the computer.
+- No session content is transmitted by this application.
+- No real Codex session log is included in source control or release archives.
 
-Because Codex session JSONL files may contain conversation data, do not share those files when reporting an issue. A description of the symptom and the Codex Token Overlay version is usually sufficient.
-
-## Windows SmartScreen
-
-GitHub release executables may be unsigned. Windows SmartScreen can therefore show an "unrecognized app" warning even when the SHA-256 checksum matches the release asset. Verify that the file came from this repository's Releases page and compare its checksum before choosing **More info > Run anyway**. Never bypass the warning for a file from an untrusted source.
-
-Each release includes a `.sha256` file next to its ZIP archive.
+Session JSONL files can contain conversation data. Do not upload them when reporting an issue. A symptom description, app version, platform, and Codex Desktop version are usually enough.
 
 ## Troubleshooting
 
-### The tray icon appears, but the strip does not
+### Switching tasks does not update the display
 
-- Bring Codex Desktop to the foreground.
-- Open a task that already has at least one completed model response.
-- Confirm that `%CODEX_HOME%\sessions` or `%USERPROFILE%\.codex\sessions` exists and is readable.
-- Restart both Codex Desktop and Codex Token Overlay after a Codex update.
+Task selection comes from an internal Codex IPC message. Restart both Codex Desktop and Codex Token Overlay, then check for a newer release if Codex was recently updated. Fallback mode can show recent token data but cannot always identify an idle task selected in the UI.
 
-### Switching tasks does not update the strip
+### The macOS menu item says `Token —`
 
-The selected-task signal comes from an internal Codex IPC message. Check for a newer Codex Token Overlay release when Codex Desktop has recently changed. The fallback log mode can show recent token data, but it cannot always identify an idle task selected in the UI.
+- Open a Codex task that has at least one completed model response.
+- Confirm that `~/.codex/sessions` exists, or that your custom `CODEX_HOME` is available to GUI applications.
+- Restart the overlay after changing `CODEX_HOME`.
+- If IPC has changed in a new Codex build, the menu falls back to the newest compatible root session.
 
 ### Remove the application
 
-Exit it from the tray, then delete the extracted folder. You may optionally delete `%LOCALAPPDATA%\CodexTokenOverlay` to remove saved display preferences.
+- Windows: exit from the tray and delete the extracted folder. Optionally remove `%LOCALAPPDATA%\CodexTokenOverlay`.
+- macOS: quit from the menu bar, disable **Launch at login**, and delete `CodexTokenOverlay.app` from `/Applications`.
 
 ## Build from source
 
-Development requires the .NET 10 SDK. PowerShell is not required by the application itself.
+### Windows
+
+Development requires the .NET 10 SDK:
 
 ```powershell
 dotnet restore .\src\CodexTokenOverlay\CodexTokenOverlay.csproj
 dotnet build .\src\CodexTokenOverlay\CodexTokenOverlay.csproj -c Release
-dotnet run --project .\src\CodexTokenOverlay\CodexTokenOverlay.csproj
-```
-
-Create a self-contained single-file build with:
-
-```powershell
-dotnet publish .\src\CodexTokenOverlay\CodexTokenOverlay.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-```
-
-GitHub Actions builds both `win-x64` and `win-arm64` release archives.
-
-Useful development scripts:
-
-```powershell
 .\scripts\Test-LogParser.ps1
+```
+
+Create a local self-contained archive with:
+
+```powershell
 .\scripts\Publish-Local.ps1 -RuntimeIdentifier win-x64
+```
+
+### macOS
+
+Development requires macOS 14 or later with Xcode Command Line Tools:
+
+```bash
+swift test --package-path macos
+./script/build_and_run.sh --verify
+```
+
+The repository's Codex environment exposes the same script as a **Run** action. To create a release-style `.app` locally:
+
+```bash
+./macos/script/package_app.sh \
+  --arch "$(uname -m)" \
+  --configuration release \
+  --version 0.2.0 \
+  --output artifacts/macos-local
 ```
 
 ## Repository contents
 
-- `src/CodexTokenOverlay/Program.cs`: overlay UI, Codex task routing, and token-log parser.
-- `src/CodexTokenOverlay/CodexTokenOverlay.csproj`: .NET 10 Windows project and single-file publish settings.
-- `scripts/Test-LogParser.ps1`: synthetic-log and `CODEX_HOME` compatibility test; it never reads or stores a real conversation.
-- `scripts/Publish-Local.ps1`: local x64/Arm64 ZIP and SHA-256 packager.
-- `.github/workflows/ci.yml`: build, parser-test, and publish validation.
-- `.github/workflows/release.yml`: tagged GitHub Release automation.
-- `README.md`, `README.zh-CN.md`, `LICENSE`, and `CHANGELOG.md`: user and project documentation.
-
-Only the source project is needed to compile the application. A downloadable Release ZIP intentionally contains just `CodexTokenOverlay.exe`, the two README files, and `LICENSE`; the ZIP checksum is published beside it.
+- `src/CodexTokenOverlay`: existing .NET/WinForms Windows application.
+- `macos/Package.swift`: native SwiftPM package for macOS.
+- `macos/Sources/CodexTokenCore`: session discovery, token parsing, and Unix IPC task routing.
+- `macos/Sources/CodexTokenOverlayMac`: native AppKit menu-bar application.
+- `macos/Tests`: synthetic parser and task-routing tests; no real conversation data.
+- `macos/script/package_app.sh`: `.app` assembly, architecture validation, and ad-hoc signing.
+- `script/build_and_run.sh`: macOS development build/run/debug entry point.
+- `.github/workflows`: Windows and macOS CI and release automation.
 
 ## License
 

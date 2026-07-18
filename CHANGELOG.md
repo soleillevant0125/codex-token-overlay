@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-18
+
 ### Added
 
-- Public source layout and bilingual documentation.
-- CI validation for Windows x64 and Windows Arm64.
-- Automated self-contained, single-file GitHub Release archives and SHA-256 checksums.
+- Native macOS menu-bar application built with SwiftPM and AppKit.
+- Apple Silicon (`macos-arm64`) and Intel (`macos-x64`) release archives.
+- Unix-domain Codex IPC task following with current and legacy socket discovery.
+- Immediate refresh when selecting an idle macOS task whose log has not changed.
+- Synthetic XCTest coverage for token parsing, `CODEX_HOME`, idle-task switching, and IPC routing.
+- macOS launch-at-login control, per-field display preferences, ad-hoc signing, and Gatekeeper guidance.
+- Cross-platform CI and Release automation for two Windows and two macOS architectures.
 
 ## [0.1.0] - 2026-07-17
 
@@ -22,5 +28,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Configurable visible fields and overlay placement through the system tray.
 - Per-user settings persisted under Local AppData.
 
-[Unreleased]: ../../compare/v0.1.0...HEAD
+[Unreleased]: ../../compare/v0.2.0...HEAD
+[0.2.0]: ../../releases/tag/v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0
