@@ -34,7 +34,10 @@ final class TokenLogMonitorTests: XCTestCase {
         XCTAssertEqual(snapshot?.reasoningOutputTokens, 345)
         XCTAssertEqual(snapshot?.contextUsedTokens, 2_048)
         XCTAssertEqual(snapshot?.contextWindowTokens, 128_000)
-        XCTAssertEqual(snapshot?.logPath, sessionURL.path)
+        XCTAssertEqual(
+            snapshot.map { URL(fileURLWithPath: $0.logPath).resolvingSymlinksInPath().path },
+            sessionURL.resolvingSymlinksInPath().path
+        )
     }
 
     func testPreferredIdleThreadSwitchesWithoutLogUpdate() throws {
