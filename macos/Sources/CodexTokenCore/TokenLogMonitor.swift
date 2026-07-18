@@ -223,7 +223,7 @@ public final class TokenLogMonitor {
                     }
                 }
 
-                if let parsed = parseLatestTokenSnapshot(
+                if let parsed = Self.parseLatestTokenSnapshot(
                     text: text,
                     path: path,
                     modificationDate: modificationDate
