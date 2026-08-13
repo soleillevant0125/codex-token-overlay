@@ -480,7 +480,15 @@ internal static class ProbeRunner
             highlight.ShowTarget(highlightTarget);
             var highlightSetBoundsCoreDelta = highlight.SetBoundsCoreCallCount - highlightSetBoundsCount;
             var highlightBounds = IntRect.FromRectangle(highlight.Bounds);
-            var highlightRing = HighlightHasRingRegion(highlight);
+            var highlightDeviceDpi = highlight.DeviceDpi <= 0 ? 96 : highlight.DeviceDpi;
+            var highlightExpectedRingThicknessPixels = Math.Max(
+                1,
+                (int)Math.Round(
+                    2 * highlightDeviceDpi / 96d,
+                    MidpointRounding.AwayFromZero));
+            var highlightRing = HighlightHasRingRegion(
+                highlight,
+                highlightExpectedRingThicknessPixels);
             var highlightHitTest = SendHitTest(highlight.Handle, new Point(301, 241));
             highlight.ClearTarget();
             var highlightHiddenAfterClear = !highlight.Visible;
@@ -538,6 +546,8 @@ internal static class ProbeRunner
                 highlight.ShowInTaskbar,
                 highlightSetBoundsCoreDelta,
                 highlightBounds,
+                highlightDeviceDpi,
+                highlightExpectedRingThicknessPixels,
                 highlightRing,
                 highlightHitTest,
                 highlightHiddenAfterClear,
@@ -700,18 +710,28 @@ internal static class ProbeRunner
             resizeHandle.Top + Math.Max(0, resizeHandle.Height / 2)));
     }
 
-    private static bool HighlightHasRingRegion(AttachmentTargetHighlightForm form)
+    private static bool HighlightHasRingRegion(
+        AttachmentTargetHighlightForm form,
+        int expectedThicknessPixels)
     {
         if (form.Region is null || form.ClientSize.Width < 8 || form.ClientSize.Height < 8)
         {
             return false;
         }
 
+        var outer = new Rectangle(Point.Empty, form.ClientSize);
+        using var expected = new Region(outer);
+        if (form.ClientSize.Width > expectedThicknessPixels * 2
+            && form.ClientSize.Height > expectedThicknessPixels * 2)
+        {
+            expected.Exclude(Rectangle.Inflate(
+                outer,
+                -expectedThicknessPixels,
+                -expectedThicknessPixels));
+        }
+
         using var graphics = form.CreateGraphics();
-        return form.Region.IsVisible(1, 1, graphics)
-            && form.Region.IsVisible(1.5f, form.ClientSize.Height / 2f, graphics)
-            && !form.Region.IsVisible(2.5f, form.ClientSize.Height / 2f, graphics)
-            && !form.Region.IsVisible(form.ClientSize.Width / 2, form.ClientSize.Height / 2, graphics);
+        return form.Region.Equals(expected, graphics);
     }
 
     private static object ExecuteThemeProbe()
@@ -1302,6 +1322,8 @@ internal static class ProbeRunner
         bool HighlightShowInTaskbar,
         int HighlightSetBoundsCoreDelta,
         IntRect HighlightBounds,
+        int HighlightDeviceDpi,
+        int HighlightExpectedRingThicknessPixels,
         bool HighlightHasRingRegion,
         int HighlightHitTest,
         bool HighlightHiddenAfterClear,

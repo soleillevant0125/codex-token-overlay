@@ -3062,6 +3062,14 @@ try {
         Assert-Condition (-not $contract.HighlightShowInTaskbar) '目标高亮不得出现在任务栏。'
         Assert-Condition ($contract.HighlightSetBoundsCoreDelta -eq 1) 'ShowTarget 必须仅用一次 SetBounds 更新目标边界。'
         Assert-Rect $contract.HighlightBounds 300 240 420 260 '目标高亮必须匹配目标窗口边界。'
+        $expectedHighlightThickness = [Math]::Max(
+            1,
+            [int][Math]::Round(
+                2 * $contract.HighlightDeviceDpi / 96.0,
+                [MidpointRounding]::AwayFromZero))
+        Assert-Condition `
+            ($contract.HighlightExpectedRingThicknessPixels -eq $expectedHighlightThickness) `
+            "目标高亮 2 DIP 环形宽度必须按当前 DPI 换算。dpi=$($contract.HighlightDeviceDpi) expected=$expectedHighlightThickness probe=$($contract.HighlightExpectedRingThicknessPixels)"
         Assert-Condition $contract.HighlightHasRingRegion '目标高亮必须使用精确 2 DIP 的四边环形 Region。'
         Assert-Condition ($contract.HighlightHitTest -eq -1) '目标高亮必须点击穿透。'
         Assert-Condition $contract.HighlightHiddenAfterClear 'ClearTarget 必须隐藏目标高亮。'
