@@ -11,9 +11,9 @@ Codex Token Overlay is a read-only desktop companion that shows token usage for 
 
 - Follows the task selected in Codex Desktop, including a task that is not currently running.
 - Refreshes after a task switch even when that task's log has not changed.
-- Shows total, input, output, cache-hit, derived cache-miss, reasoning, and context-window token metrics.
+- Shows total, input, output, cache-hit, derived cache-miss, reasoning, and context-window token metrics on both platforms, plus cache-hit rate on Windows.
 - Lets you choose exactly which fields are visible.
-- Uses a click-through floating strip and tray icon on Windows.
+- Uses a compact, no-focus capsule that follows the Codex main window, plus a tray icon on Windows.
 - Uses a native menu-bar item on macOS, with launch-at-login control in its menu.
 - Falls back to the newest root Codex Desktop session when internal IPC is unavailable.
 - Reads local files only; it has no telemetry, analytics, network API, or upload feature.
@@ -33,6 +33,8 @@ Download the newest ZIP from [GitHub Releases](../../releases).
 
 Every ZIP has a neighboring `.sha256` checksum file. Windows Lite is close to the macOS archive size and contains the same application code as Standalone; it uses a shared system runtime instead of embedding it. Install the matching **Desktop Runtime** from [Microsoft's official .NET 10 download page](https://dotnet.microsoft.com/download/dotnet/10.0). Choose the same-architecture asset without `-lite` if you do not want to install a runtime or are unsure.
 
+The Windows Arm64 packages are cross-built and their PE architecture is checked in CI. They should be treated as not yet natively tested on Arm64 hardware until a physical-device test is recorded.
+
 No Windows package requires PowerShell. macOS users do not need Xcode, Swift, or Homebrew.
 
 ## Run on Windows
@@ -41,7 +43,13 @@ No Windows package requires PowerShell. macOS users do not need Xcode, Swift, or
 2. Extract it anywhere.
 3. Double-click `CodexTokenOverlay.exe`.
 
-The tray menu controls visible fields, placement, task locking, temporary visibility, and exit. The floating strip appears while a recognized Codex Desktop window is in the foreground.
+The default Windows workflow uses manual main-window attachment. Choose **调整位置和大小…** from the tray, then drag the capsule onto the Codex main window. The nearest of its eight reference points (four corners and four edge midpoints) becomes the saved reference, so the capsule follows that same point and relative offset when the Codex window moves or resizes. A drop over the built-in pet, desktop, another app, or any other non-main Codex surface is invalid: the target highlight clears, the placement cannot be saved, and the capsule immediately returns to its last valid position. Drag the bottom-right handle to resize the entire capsule and expanded panel proportionally from 60% to 130%, including text, spacing, radii, and padding.
+
+Press **Enter** or choose **完成调整** in the tray to save; press **Esc** or choose **取消调整** to restore the complete pre-edit placement and scale. **重置到 Codex 右上** restores the main-window top-right attachment at 100%.
+
+Use **收起时显示 > 左侧指标** and **收起时显示 > 右侧指标** in the tray menu to choose the two values shown while collapsed. The compatibility submenu **传统定位** retains **标题栏右上**, **自动吸附**, **窗口内右上**, and **窗口内右下** for existing workflows. Selecting a traditional placement disables manual attachment until adjustment or reset is used again. The bottom-right traditional placement expands upward. In title-bar mode, the requested scale is reduced only as much as necessary to use the largest scale that fits completely inside the title bar; the overlay never moves into the Codex client area, and the requested scale returns automatically when space permits. Other narrow placements still fall back from two collapsed metrics to one metric and then hidden until space returns.
+
+Click the capsule normally to expand its full metric panel; click it again or click elsewhere to collapse it, while interacting inside the panel keeps it open. The overlay does not take focus from the Codex input box. Its visual attachment is a separate companion window that follows Codex geometry; it is not injected into or embedded in the Codex process or UI tree. It follows the Windows application light/dark setting live, including the capsule, expanded panel, edit decoration, and attachment target ring; there is no manual theme option. It appears only while a recognized Codex Desktop window is in the foreground and hides when Codex loses foreground. The tray menu also controls expanded-panel fields, task locking, temporary visibility, and exit.
 
 Unsigned GitHub executables can trigger Windows SmartScreen. Confirm that the file came from this repository and compare its SHA-256 checksum before choosing **More info > Run anyway**.
 
@@ -76,6 +84,8 @@ Preferences are stored per user:
 - Windows: `%LOCALAPPDATA%\CodexTokenOverlay\settings.json`
 - macOS: the standard preferences domain `io.github.soleillevant0125.CodexTokenOverlay`
 
+Developers and test runners can isolate Windows preferences with `--settings <absolute-json-path>`. This argument is developer/test-only and is not needed or exposed as a normal user setting.
+
 ## Metrics
 
 | Field | Meaning |
@@ -84,6 +94,7 @@ Preferences are stored per user:
 | Input | Accumulated input tokens. |
 | Output | Accumulated output tokens. |
 | Cache hit | Accumulated cached input tokens; this is a subset of input. |
+| Cache hit rate (Windows) | `cached input / input * 100%`, clamped to 0–100%; it is 0% when input is zero or unavailable. It can be selected for the Windows expanded panel or either collapsed slot and is visible by default in new Windows settings. |
 | Cache miss | Derived as `max(0, input - cached input)`. |
 | Context | Tokens used by the latest model call compared with `model_context_window`. |
 | Reasoning | Accumulated reasoning output tokens when present. |
@@ -167,7 +178,7 @@ The repository's Codex environment exposes the same script as a **Run** action. 
 ./macos/script/package_app.sh \
   --arch "$(uname -m)" \
   --configuration release \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --output artifacts/macos-local
 ```
 

@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-13
+
+### Added
+
+- New default Windows title-bar capsule with click-to-expand and outside-click collapse behavior that preserves Codex input focus.
+- Tray controls for choosing the left and right metrics shown in the collapsed capsule.
+- Narrow-window fallback from two collapsed metrics to one metric and then hidden, with automatic restoration when space returns.
+- Main-window-only manual attachment with eight reference points, invalid-drop restoration, proportional 60–130% resizing, save/cancel, and reset.
+- Selectable Windows cache-hit-rate metric, computed as cached input divided by input, with a 0% zero-input result and default visibility in new Windows settings.
+- Live Windows application-theme following for the capsule, expanded panel, edit decoration, and attachment target ring.
+
+### Changed
+
+- Made explicit manual attachment the primary Windows placement workflow; the overlay follows the saved Codex main-window reference point instead of storing desktop coordinates, and rejects drops over the desktop, other apps, or non-main Codex surfaces.
+- Preserved Title-bar top-right, Auto, inside-top-right, and inside-bottom-right Windows placements under the Traditional positioning compatibility submenu.
+- Changed title-bar placement to use the largest scale that fully fits the title bar instead of moving the overlay into the Codex client area; the requested scale is retained for automatic restoration when space returns.
+- Added an absolute Windows `--settings` path for isolated development and UI verification; it remains developer/test-only rather than a normal user option.
+- Clarified that the Windows overlay is an independent companion window, not an injection into the Codex process or UI tree.
+- Added automatic live light/dark following from the Windows application theme with no manual theme selector.
+- Clarified that Windows Arm64 packages are cross-built and PE-checked but not yet natively tested on Arm64 hardware.
+
+### Fixed
+
+- Prevented the overlay's own shadow and helper windows from invalidating a manual Codex attachment while dragging.
+- Kept two collapsed title-bar metrics readable by widening the capsule without moving it into the Codex client area.
+- Moved the default and reset manual placement left far enough to avoid the Codex caption buttons.
+
 ## [0.2.1] - 2026-07-18
 
 ### Added
@@ -41,7 +68,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Configurable visible fields and overlay placement through the system tray.
 - Per-user settings persisted under Local AppData.
 
-[Unreleased]: ../../compare/v0.2.1...HEAD
+[Unreleased]: ../../compare/v0.3.0...HEAD
+[0.3.0]: ../../compare/v0.2.1...v0.3.0
 [0.2.1]: ../../releases/tag/v0.2.1
 [0.2.0]: ../../releases/tag/v0.2.0
 [0.1.0]: ../../releases/tag/v0.1.0

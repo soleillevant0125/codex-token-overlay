@@ -21,6 +21,10 @@ probe.json
 window-probe.json
 ipc-probe.json
 
+# Superpowers 本地设计草图会话
+.superpowers/
+.worktrees/
+
 # 操作系统临时文件
 Thumbs.db
 Desktop.ini

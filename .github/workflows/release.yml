@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example v0.2.1
+        description: Existing release tag, for example v0.3.0
         required: true
         type: string
 
@@ -37,6 +37,16 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Test Windows overlay logic
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: .\scripts\Test-OverlayLogic.ps1
+
+      - name: Test log parsing and CODEX_HOME discovery
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: .\scripts\Test-LogParser.ps1
 
       - name: Restore
         shell: pwsh
@@ -100,6 +110,7 @@ jobs:
 
           if ($rid -eq 'win-x64') {
             .\scripts\Test-PublishedExecutable.ps1 -ExecutablePath $liteExecutable
+            .\scripts\Test-PublishedExecutable.ps1 -ExecutablePath $standaloneExecutable
           }
 
       - name: Create ZIP and SHA-256 checksum

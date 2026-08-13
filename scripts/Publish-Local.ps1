@@ -135,6 +135,11 @@ if ($buildStandalone) {
         -ExecutablePath (Join-Path $standalonePublishDirectory "CodexTokenOverlay.exe") `
         -Architecture $RuntimeIdentifier.Substring($RuntimeIdentifier.IndexOf('-') + 1)
 
+    if ($RuntimeIdentifier -eq "win-x64") {
+        & (Join-Path $PSScriptRoot "Test-PublishedExecutable.ps1") `
+            -ExecutablePath (Join-Path $standalonePublishDirectory "CodexTokenOverlay.exe")
+    }
+
     New-ReleaseArchive `
         -PublishDirectory $standalonePublishDirectory `
         -AssetName ("CodexTokenOverlay-" + $RuntimeIdentifier) `
