@@ -918,7 +918,7 @@ internal sealed class TokenStripForm : Form
     }
 
     private Color ValueColorFor(OverlayMetric metric) =>
-        metric.Field is DisplayField.Context or DisplayField.ContextPercent
+        metric.Field is DisplayField.Context or DisplayField.ContextPercent or DisplayField.TotalCost
             ? _palette.Accent
             : _palette.Value;
 

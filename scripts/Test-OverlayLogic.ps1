@@ -1788,15 +1788,16 @@ try {
         }
         $fieldExpectations = @(
             @{ Name = 'total'; Field = 1; CompactLabel = '总'; ExpandedLabel = '总 Token'; Value = '128.4k' },
-            @{ Name = 'input'; Field = 2; CompactLabel = '入'; ExpandedLabel = '输入'; Value = '82.1k' },
-            @{ Name = 'output'; Field = 4; CompactLabel = '出'; ExpandedLabel = '输出'; Value = '12.6k' },
-            @{ Name = 'cache-hit'; Field = 8; CompactLabel = '命中'; ExpandedLabel = '缓存命中'; Value = '31.4k' },
+            @{ Name = 'input'; Field = 2; CompactLabel = '入'; ExpandedLabel = '输入'; Value = '82.1k · $0.25' },
+            @{ Name = 'output'; Field = 4; CompactLabel = '出'; ExpandedLabel = '输出'; Value = '12.6k · $0.38' },
+            @{ Name = 'cache-hit'; Field = 8; CompactLabel = '命中'; ExpandedLabel = '缓存命中'; Value = '31.4k · $0.02' },
             @{ Name = 'cache-miss'; Field = 16; CompactLabel = '未中'; ExpandedLabel = '缓存未命中'; Value = '50.7k' },
             @{ Name = 'context'; Field = 32; CompactLabel = '上下文'; ExpandedLabel = '上下文用量'; Value = '62.0k / 200.0k' },
             @{ Name = 'context-percent'; Field = 64; CompactLabel = '上下文'; ExpandedLabel = '上下文占用'; Value = '31%' },
             @{ Name = 'reasoning'; Field = 128; CompactLabel = '推理'; ExpandedLabel = '推理输出'; Value = '6.5k' },
             @{ Name = 'thread'; Field = 256; CompactLabel = '会话'; ExpandedLabel = '会话'; Value = '1111…555555' },
-            @{ Name = 'cache-hit-rate'; Field = 512; CompactLabel = '命中率'; ExpandedLabel = '缓存命中率'; Value = '38%' }
+            @{ Name = 'cache-hit-rate'; Field = 512; CompactLabel = '命中率'; ExpandedLabel = '缓存命中率'; Value = '38%' },
+            @{ Name = 'total-cost'; Field = 1024; CompactLabel = '总价'; ExpandedLabel = '估算总价'; Value = '$0.65' }
         )
         $originalCulture = [System.Globalization.CultureInfo]::CurrentCulture
         try {

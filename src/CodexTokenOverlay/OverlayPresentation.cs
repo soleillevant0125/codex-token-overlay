@@ -66,6 +66,9 @@ internal static class OverlayPresentationBuilder
         _ => value.ToString("N0", CultureInfo.InvariantCulture)
     };
 
+    public static string FormatUsd(decimal value) =>
+        "$" + Math.Max(0, value).ToString("0.00", CultureInfo.InvariantCulture);
+
     public static string ShortThreadId(string threadId, int maximumLength = 12)
     {
         var singleLineThreadId = SanitizeSingleLine(threadId);
@@ -101,6 +104,7 @@ internal static class OverlayPresentationBuilder
             DisplayField.ContextPercent => "上下文百分比",
             DisplayField.Reasoning => "推理输出",
             DisplayField.Thread => "会话 ID",
+            DisplayField.TotalCost => "估算总价",
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
     }
@@ -139,18 +143,20 @@ internal static class OverlayPresentationBuilder
         double contextPercent)
     {
         var labels = GetLabels(field);
+        var cost = TokenCostEstimator.Estimate(snapshot);
         var value = field switch
         {
             DisplayField.Total => FormatTokenCount(snapshot.TotalTokens),
-            DisplayField.Input => FormatTokenCount(snapshot.InputTokens),
-            DisplayField.Output => FormatTokenCount(snapshot.OutputTokens),
-            DisplayField.CacheHit => FormatTokenCount(snapshot.CachedInputTokens),
+            DisplayField.Input => $"{FormatTokenCount(snapshot.InputTokens)} · {FormatUsd(cost.InputCostUsd)}",
+            DisplayField.Output => $"{FormatTokenCount(snapshot.OutputTokens)} · {FormatUsd(cost.OutputCostUsd)}",
+            DisplayField.CacheHit => $"{FormatTokenCount(snapshot.CachedInputTokens)} · {FormatUsd(cost.CachedInputCostUsd)}",
             DisplayField.CacheHitRate => $"{snapshot.CacheHitPercent:0}%",
             DisplayField.CacheMiss => FormatTokenCount(snapshot.UncachedInputTokens),
             DisplayField.Context => $"{FormatTokenCount(snapshot.ContextUsedTokens)} / {FormatTokenCount(snapshot.ContextWindowTokens)}",
             DisplayField.ContextPercent => $"{contextPercent:0}%",
             DisplayField.Reasoning => FormatTokenCount(snapshot.ReasoningOutputTokens),
             DisplayField.Thread => ShortThreadId(snapshot.ThreadId),
+            DisplayField.TotalCost => FormatUsd(cost.TotalCostUsd),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
         var hasValue = field != DisplayField.Thread || !string.IsNullOrWhiteSpace(snapshot.ThreadId);
@@ -171,6 +177,7 @@ internal static class OverlayPresentationBuilder
             DisplayField.ContextPercent => ("上下文", "上下文占用"),
             DisplayField.Reasoning => ("推理", "推理输出"),
             DisplayField.Thread => ("会话", "会话"),
+            DisplayField.TotalCost => ("总价", "估算总价"),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
     }

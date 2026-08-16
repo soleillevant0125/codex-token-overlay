@@ -24,7 +24,8 @@ internal enum DisplayField
     ContextPercent = 1 << 6,
     Reasoning = 1 << 7,
     Thread = 1 << 8,
-    CacheHitRate = 1 << 9
+    CacheHitRate = 1 << 9,
+    TotalCost = 1 << 10
 }
 
 internal enum CollapsedSlot { Primary, Secondary }
@@ -35,13 +36,14 @@ internal static class DisplayFieldRules
         DisplayField.Total | DisplayField.Input | DisplayField.Output |
         DisplayField.CacheHit | DisplayField.CacheMiss | DisplayField.Context |
         DisplayField.ContextPercent | DisplayField.Reasoning | DisplayField.Thread |
-        DisplayField.CacheHitRate;
+        DisplayField.CacheHitRate | DisplayField.TotalCost;
 
     public static readonly IReadOnlyList<DisplayField> Ordered = new[]
     {
         DisplayField.Total, DisplayField.Input, DisplayField.Output,
         DisplayField.CacheHit, DisplayField.CacheHitRate, DisplayField.CacheMiss, DisplayField.Context,
-        DisplayField.ContextPercent, DisplayField.Reasoning, DisplayField.Thread
+        DisplayField.ContextPercent, DisplayField.Reasoning, DisplayField.Thread,
+        DisplayField.TotalCost
     };
 
     public static bool IsSingleSupported(DisplayField field)
@@ -84,7 +86,8 @@ internal sealed class OverlaySettings
         | DisplayField.CacheHitRate
         | DisplayField.CacheMiss
         | DisplayField.Context
-        | DisplayField.ContextPercent;
+        | DisplayField.ContextPercent
+        | DisplayField.TotalCost;
 
     private sealed class PersistedSettings
     {
