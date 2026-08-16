@@ -79,6 +79,17 @@ internal static class SessionPathResolver
     }
 }
 
+internal sealed record TokenPricingUsage(
+    string Model,
+    long TotalTokens,
+    long InputTokens,
+    long CachedInputTokens,
+    long OutputTokens,
+    bool IsMainAgent)
+{
+    public long UncachedInputTokens => Math.Max(0, InputTokens - CachedInputTokens);
+}
+
 internal sealed record TokenSnapshot(
     string ThreadId,
     string LogPath,
@@ -91,6 +102,8 @@ internal sealed record TokenSnapshot(
     long ContextWindowTokens,
     DateTime UpdatedAtUtc)
 {
+    public IReadOnlyList<TokenPricingUsage> PricingUsages { get; init; } = Array.Empty<TokenPricingUsage>();
+
     public double ContextPercent => ContextWindowTokens <= 0
         ? 0
         : Math.Clamp(ContextUsedTokens * 100d / ContextWindowTokens, 0, 100);
@@ -431,11 +444,15 @@ internal sealed class TokenLogMonitor : IDisposable
     private const int HistoricalOverlapBytes = 256 * 1024;
     private readonly string _sessionRoot;
     private readonly FileSystemWatcher? _watcher;
+    private readonly SessionRelationshipIndex _relationshipIndex;
     private readonly ConcurrentQueue<string> _changedPaths = new();
     private readonly ConcurrentDictionary<string, bool> _rootSessionCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CachedSessionSnapshot> _descendantSnapshotCache =
+        new(StringComparer.OrdinalIgnoreCase);
     private string? _activeLogPath;
     private DateTime _activeWriteUtc;
     private DateTime _lastFullScanUtc = DateTime.MinValue;
+    private TokenSnapshot? _lastRootSnapshot;
     private TokenSnapshot? _lastSnapshot;
     private string? _selectedThreadId;
 
@@ -448,6 +465,7 @@ internal sealed class TokenLogMonitor : IDisposable
     public TokenLogMonitor(string? sessionRoot = null)
     {
         _sessionRoot = sessionRoot ?? SessionPathResolver.Resolve();
+        _relationshipIndex = new SessionRelationshipIndex(_sessionRoot);
 
         if (!Directory.Exists(_sessionRoot))
         {
@@ -501,20 +519,91 @@ internal sealed class TokenLogMonitor : IDisposable
             return _lastSnapshot;
         }
 
-        if (_lastSnapshot is not null && writeUtc == _activeWriteUtc)
+        if (_lastRootSnapshot is null || writeUtc != _activeWriteUtc)
         {
-            return _lastSnapshot;
+            var parsed = TryReadLatestTokenSnapshot(_activeLogPath, writeUtc, isMainAgent: true);
+            if (parsed is not null)
+            {
+                // 只有完整解析成功后才提交文件版本，避免卡在写到一半的 JSON 行。
+                _activeWriteUtc = writeUtc;
+                _lastRootSnapshot = parsed;
+            }
         }
 
-        var parsed = TryReadLatestTokenSnapshot(_activeLogPath, writeUtc);
-        if (parsed is not null)
+        if (_lastRootSnapshot is not null)
         {
-            // 只有完整解析成功后才提交文件版本，避免卡在写到一半的 JSON 行。
-            _activeWriteUtc = writeUtc;
-            _lastSnapshot = parsed;
+            _lastSnapshot = AggregateTaskSnapshot(_lastRootSnapshot);
         }
-
         return _lastSnapshot;
+    }
+
+    private TokenSnapshot AggregateTaskSnapshot(TokenSnapshot rootSnapshot)
+    {
+        var snapshots = new List<TokenSnapshot> { rootSnapshot };
+        var livePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var descendant in _relationshipIndex.GetDescendants(rootSnapshot.ThreadId))
+        {
+            livePaths.Add(descendant.FilePath);
+            var writeUtc = SafeGetLastWriteUtc(descendant.FilePath);
+            if (writeUtc == DateTime.MinValue)
+            {
+                continue;
+            }
+
+            if (!_descendantSnapshotCache.TryGetValue(descendant.FilePath, out var cached)
+                || cached.WriteUtc != writeUtc)
+            {
+                var parsed = TryReadLatestTokenSnapshot(descendant.FilePath, writeUtc, isMainAgent: false);
+                if (parsed is not null)
+                {
+                    cached = new CachedSessionSnapshot(writeUtc, parsed);
+                    _descendantSnapshotCache[descendant.FilePath] = cached;
+                }
+            }
+
+            if (cached is not null)
+            {
+                snapshots.Add(cached.Snapshot);
+            }
+        }
+
+        foreach (var stalePath in _descendantSnapshotCache.Keys
+            .Where(path => !livePaths.Contains(path))
+            .ToArray())
+        {
+            _descendantSnapshotCache.Remove(stalePath);
+        }
+
+        return rootSnapshot with
+        {
+            TotalTokens = SumSaturating(snapshots.Select(snapshot => snapshot.TotalTokens)),
+            InputTokens = SumSaturating(snapshots.Select(snapshot => snapshot.InputTokens)),
+            CachedInputTokens = SumSaturating(snapshots.Select(snapshot => snapshot.CachedInputTokens)),
+            OutputTokens = SumSaturating(snapshots.Select(snapshot => snapshot.OutputTokens)),
+            ReasoningOutputTokens = SumSaturating(snapshots.Select(snapshot => snapshot.ReasoningOutputTokens)),
+            UpdatedAtUtc = snapshots.Max(snapshot => snapshot.UpdatedAtUtc),
+            PricingUsages = snapshots.SelectMany(snapshot => snapshot.PricingUsages).ToArray()
+        };
+    }
+
+    private static long SumSaturating(IEnumerable<long> values)
+    {
+        var sum = 0L;
+        foreach (var value in values)
+        {
+            if (value <= 0)
+            {
+                continue;
+            }
+
+            if (long.MaxValue - sum < value)
+            {
+                return long.MaxValue;
+            }
+            sum += value;
+        }
+        return sum;
     }
 
     private void OnLogChanged(object sender, FileSystemEventArgs eventArgs)
@@ -701,14 +790,20 @@ internal sealed class TokenLogMonitor : IDisposable
         _activeLogPath = path;
         _selectedThreadId = threadId;
         _activeWriteUtc = DateTime.MinValue;
+        _lastRootSnapshot = null;
         _lastSnapshot = null;
+        _descendantSnapshotCache.Clear();
         ActiveSessionVersion++;
     }
 
-    private static TokenSnapshot? TryReadLatestTokenSnapshot(string path, DateTime writeUtc)
+    private static TokenSnapshot? TryReadLatestTokenSnapshot(
+        string path,
+        DateTime writeUtc,
+        bool isMainAgent)
     {
         try
         {
+            var initialModel = TryReadInitialModel(path);
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             var blockEnd = stream.Length;
 
@@ -737,7 +832,7 @@ internal sealed class TokenLogMonitor : IDisposable
                     text = firstNewLine >= 0 ? text[(firstNewLine + 1)..] : string.Empty;
                 }
 
-                var parsed = TryParseLatestTokenSnapshot(text, path, writeUtc);
+                var parsed = TryParseLatestTokenSnapshot(text, path, writeUtc, initialModel, isMainAgent);
                 if (parsed is not null)
                 {
                     return parsed;
@@ -758,9 +853,15 @@ internal sealed class TokenLogMonitor : IDisposable
         return null;
     }
 
-    private static TokenSnapshot? TryParseLatestTokenSnapshot(string text, string path, DateTime writeUtc)
+    private static TokenSnapshot? TryParseLatestTokenSnapshot(
+        string text,
+        string path,
+        DateTime writeUtc,
+        string? initialModel,
+        bool isMainAgent)
     {
         var lines = text.Split('\n');
+        var model = TryParseLatestModel(lines) ?? initialModel ?? "unknown";
 
         for (var index = lines.Length - 1; index >= 0; index--)
         {
@@ -801,21 +902,95 @@ internal sealed class TokenLogMonitor : IDisposable
                 }
 
                 var threadId = ExtractThreadId(path);
+                var inputTokens = GetLong(total, "input_tokens");
+                var cachedInputTokens = GetLong(total, "cached_input_tokens");
+                var outputTokens = GetLong(total, "output_tokens");
+                var totalTokens = GetLong(total, "total_tokens");
                 return new TokenSnapshot(
                     threadId,
                     path,
-                    GetLong(total, "total_tokens"),
-                    GetLong(total, "input_tokens"),
-                    GetLong(total, "cached_input_tokens"),
-                    GetLong(total, "output_tokens"),
+                    totalTokens,
+                    inputTokens,
+                    cachedInputTokens,
+                    outputTokens,
                     GetLong(total, "reasoning_output_tokens"),
                     GetLong(last, "total_tokens"),
                     GetLong(info, "model_context_window"),
-                    writeUtc);
+                    writeUtc)
+                {
+                    PricingUsages = new[]
+                    {
+                        new TokenPricingUsage(
+                            model,
+                            totalTokens,
+                            inputTokens,
+                            cachedInputTokens,
+                            outputTokens,
+                            isMainAgent)
+                    }
+                };
             }
             catch (Exception exception) when (exception is JsonException or InvalidOperationException)
             {
                 // Codex 可能正在追加最后一行；继续寻找前一个完整快照。
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryReadInitialModel(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: 64 * 1024);
+            var lines = new List<string>(capacity: 64);
+            for (var index = 0; index < 64 && reader.ReadLine() is { } line; index++)
+            {
+                lines.Add(line);
+            }
+            return TryParseLatestModel(lines.ToArray());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryParseLatestModel(string[] lines)
+    {
+        for (var index = lines.Length - 1; index >= 0; index--)
+        {
+            var line = lines[index].Trim();
+            if (line.Length == 0 || !line.Contains("\"turn_context\"", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var root = document.RootElement;
+                if (root.TryGetProperty("type", out var type)
+                    && type.ValueKind == JsonValueKind.String
+                    && type.GetString() == "turn_context"
+                    && root.TryGetProperty("payload", out var payload)
+                    && payload.ValueKind == JsonValueKind.Object
+                    && payload.TryGetProperty("model", out var model)
+                    && model.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(model.GetString()))
+                {
+                    return model.GetString();
+                }
+            }
+            catch (JsonException)
+            {
+                // 当前块可能以半行结束；继续向前寻找上一个完整 turn_context。
             }
         }
 
@@ -850,5 +1025,8 @@ internal sealed class TokenLogMonitor : IDisposable
     public void Dispose()
     {
         _watcher?.Dispose();
+        _relationshipIndex.Dispose();
     }
+
+    private sealed record CachedSessionSnapshot(DateTime WriteUtc, TokenSnapshot Snapshot);
 }

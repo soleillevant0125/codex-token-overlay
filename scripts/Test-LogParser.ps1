@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$DotnetPath = "dotnet",
     [string]$TargetFramework = "net10.0-windows"
 )
@@ -17,6 +17,8 @@ $threadA = "aaaaaaaa-1111-2222-3333-444444444444"
 $threadB = "bbbbbbbb-1111-2222-3333-444444444444"
 $threadAPath = Join-Path $sessionDirectory ("rollout-2026-07-17T00-01-00-" + $threadA + ".jsonl")
 $threadBPath = Join-Path $sessionDirectory ("rollout-2026-07-17T00-02-00-" + $threadB + ".jsonl")
+$childThreadId = "cccccccc-1111-2222-3333-444444444444"
+$childPath = Join-Path $sessionDirectory ("rollout-2026-07-17T00-03-00-" + $childThreadId + ".jsonl")
 $switchProbePath = Join-Path $testRoot "thread-switch-probe.json"
 $originalCodexHome = $env:CODEX_HOME
 
@@ -24,22 +26,31 @@ try {
     New-Item -ItemType Directory -Path $sessionDirectory -Force | Out-Null
 
     # 只使用合成数据，测试仓库不会包含任何真实 Codex 会话内容。
-    $sessionMeta = '{"type":"session_meta","payload":{"originator":"Codex Desktop","source":"vscode"}}'
+    $sessionMeta = '{"type":"session_meta","payload":{"id":"' + $threadId + '","originator":"Codex Desktop","source":"vscode"}}'
     $tokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12345,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":2345,"reasoning_output_tokens":345},"last_token_usage":{"total_tokens":2048},"model_context_window":128000}}}'
     [System.IO.File]::WriteAllLines(
         $sessionPath,
-        [string[]]@($sessionMeta, $tokenEvent),
+        [string[]]@($sessionMeta, '{"type":"turn_context","payload":{"model":"gpt-5.6-sol"}}', $tokenEvent),
+        [System.Text.UTF8Encoding]::new($false))
+
+    $childSessionMeta = '{"type":"session_meta","payload":{"id":"' + $childThreadId + '","parent_thread_id":"' + $threadId + '","originator":"Codex Desktop","source":{"subagent":{"thread_spawn":{}}}}}'
+    $childTokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":5000,"input_tokens":4000,"cached_input_tokens":3000,"output_tokens":1000,"reasoning_output_tokens":100},"last_token_usage":{"total_tokens":512},"model_context_window":128000}}}'
+    [System.IO.File]::WriteAllLines(
+        $childPath,
+        [string[]]@($childSessionMeta, '{"type":"turn_context","payload":{"model":"gpt-5.6-luna"}}', $childTokenEvent),
         [System.Text.UTF8Encoding]::new($false))
 
     $threadATokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":11111,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":1111,"reasoning_output_tokens":111},"last_token_usage":{"total_tokens":1024},"model_context_window":128000}}}'
     $threadBTokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":22222,"input_tokens":20000,"cached_input_tokens":14000,"output_tokens":2222,"reasoning_output_tokens":222},"last_token_usage":{"total_tokens":2048},"model_context_window":128000}}}'
+    $threadASessionMeta = '{"type":"session_meta","payload":{"id":"' + $threadA + '","originator":"Codex Desktop","source":"vscode"}}'
+    $threadBSessionMeta = '{"type":"session_meta","payload":{"id":"' + $threadB + '","originator":"Codex Desktop","source":"vscode"}}'
     [System.IO.File]::WriteAllLines(
         $threadAPath,
-        [string[]]@($sessionMeta, $threadATokenEvent),
+        [string[]]@($threadASessionMeta, $threadATokenEvent),
         [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllLines(
         $threadBPath,
-        [string[]]@($sessionMeta, $threadBTokenEvent),
+        [string[]]@($threadBSessionMeta, $threadBTokenEvent),
         [System.Text.UTF8Encoding]::new($false))
 
     $threadBWriteUtc = [DateTime]::UtcNow.AddMinutes(-10)
@@ -118,14 +129,19 @@ try {
     $snapshot = Get-Content -LiteralPath $probePath -Encoding UTF8 -Raw | ConvertFrom-Json
     $checks = @(
         $snapshot.ThreadId -eq $threadId
-        $snapshot.TotalTokens -eq 12345
-        $snapshot.InputTokens -eq 10000
-        $snapshot.CachedInputTokens -eq 7000
-        $snapshot.OutputTokens -eq 2345
-        $snapshot.ReasoningOutputTokens -eq 345
+        $snapshot.TotalTokens -eq 17345
+        $snapshot.InputTokens -eq 14000
+        $snapshot.CachedInputTokens -eq 10000
+        $snapshot.OutputTokens -eq 3345
+        $snapshot.ReasoningOutputTokens -eq 445
         $snapshot.ContextUsedTokens -eq 2048
         $snapshot.ContextWindowTokens -eq 128000
-        $snapshot.UncachedInputTokens -eq 3000
+        $snapshot.UncachedInputTokens -eq 4000
+        $snapshot.PricingUsages.Count -eq 2
+        ($snapshot.PricingUsages.Model -contains 'gpt-5.6-sol')
+        ($snapshot.PricingUsages.Model -contains 'gpt-5.6-luna')
+        @($snapshot.PricingUsages | Where-Object IsMainAgent).Count -eq 1
+        @($snapshot.PricingUsages | Where-Object { -not $_.IsMainAgent }).Count -eq 1
     )
     if ($checks -contains $false) {
         throw "解析结果与合成日志不一致。"
@@ -139,7 +155,7 @@ try {
         throw "CODEX_HOME 自动发现测试失败。"
     }
     $autoDiscoveredSnapshot = Get-Content -LiteralPath $probePath -Encoding UTF8 -Raw | ConvertFrom-Json
-    if ($autoDiscoveredSnapshot.ThreadId -ne $threadId -or $autoDiscoveredSnapshot.TotalTokens -ne 12345) {
+    if ($autoDiscoveredSnapshot.ThreadId -ne $threadId -or $autoDiscoveredSnapshot.TotalTokens -ne 17345) {
         throw "CODEX_HOME 自动发现结果不正确。"
     }
 

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('Settings', 'Presentation', 'Layout', 'Interaction', 'Window', 'Form', 'Attachment', 'Theme', 'All')]
     [string]$Area = 'All',
     [string]$DotnetPath = 'dotnet',
@@ -1842,6 +1842,17 @@ try {
         $cacheHitMaximumSnapshot = @{} + $snapshot
         $cacheHitMaximumSnapshot.InputTokens = [long]::MaxValue
         $cacheHitMaximumSnapshot.CachedInputTokens = [long]::MaxValue
+        $mixedModelSnapshot = @{} + $snapshot
+        $mixedModelSnapshot.TotalTokens = 4200000
+        $mixedModelSnapshot.InputTokens = 4000000
+        $mixedModelSnapshot.CachedInputTokens = 2000000
+        $mixedModelSnapshot.OutputTokens = 200000
+        $mixedModelSnapshot.PricingUsages = @(
+            @{ Model = 'gpt-5.6-sol'; TotalTokens = 2100000; InputTokens = 2000000; CachedInputTokens = 1000000; OutputTokens = 100000; IsMainAgent = $true },
+            @{ Model = 'gpt-5.6-luna'; TotalTokens = 700000; InputTokens = 666666; CachedInputTokens = 333333; OutputTokens = 33333; IsMainAgent = $false },
+            @{ Model = 'gpt-5.6-luna'; TotalTokens = 700000; InputTokens = 666667; CachedInputTokens = 333333; OutputTokens = 33333; IsMainAgent = $false },
+            @{ Model = 'gpt-5.6-luna'; TotalTokens = 700000; InputTokens = 666667; CachedInputTokens = 333334; OutputTokens = 33334; IsMainAgent = $false }
+        )
         $presentationCases = @(
             @{
                 Name = 'primary-secondary'
@@ -1938,6 +1949,14 @@ try {
                 PrimaryField = 1
                 SecondaryField = 64
                 VisibleFields = 1023
+            },
+            @{
+                Name = 'mixed-model-pricing'
+                Operation = 'Create'
+                Snapshot = $mixedModelSnapshot
+                PrimaryField = 1024
+                SecondaryField = 1
+                VisibleFields = 32767
             }
         )
         foreach ($expectedField in $fieldExpectations) {
@@ -2016,6 +2035,23 @@ try {
             Assert-Condition ($cacheHitRate.Count -eq 1 -and $cacheHitRate[0].Value -eq $cacheHitCase.Value) "$($cacheHitCase.Name) 的缓存命中率不正确。"
             Assert-Condition ($cacheHitRate[0].HasValue -eq $true) "$($cacheHitCase.Name) 的缓存命中率应有值。"
         }
+
+        $mixedPricing = (Get-ProbeCase $response 'mixed-model-pricing').Presentation
+        Assert-Condition ($mixedPricing.Primary.Value -eq '$8.84') 'Sol 与降价后 Luna 的估算总价不正确。'
+        $mixedInput = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 2 })
+        $mixedCached = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 8 })
+        $mixedOutput = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 4 })
+        Assert-Condition ($mixedInput.Count -eq 1 -and $mixedInput[0].Value -eq '4.00M · $5.20') 'Sol/Luna 混合输入价格不正确。'
+        Assert-Condition ($mixedCached.Count -eq 1 -and $mixedCached[0].Value -eq '2.00M · $0.52') 'Sol/Luna 混合缓存价格不正确。'
+        Assert-Condition ($mixedOutput.Count -eq 1 -and $mixedOutput[0].Value -eq '200.0k · $3.12') 'Sol/Luna 混合输出价格不正确。'
+        $mainAgent = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 2048 })
+        $subagents = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 4096 })
+        $mainAgentCost = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 8192 })
+        $subagentsCost = @($mixedPricing.ExpandedRows | Where-Object { $_.Field -eq 16384 })
+        Assert-Condition ($mainAgent.Count -eq 1 -and $mainAgent[0].ExpandedLabel -eq '主代理（Sol）' -and $mainAgent[0].Value -eq '2.10M') '主代理 Token 独立行不正确。'
+        Assert-Condition ($mainAgentCost.Count -eq 1 -and $mainAgentCost[0].ExpandedLabel -eq '主代理费用' -and $mainAgentCost[0].Value -eq '$8.50') '主代理费用独立行不正确。'
+        Assert-Condition ($subagents.Count -eq 1 -and $subagents[0].ExpandedLabel -eq '子代理（Luna×3）' -and $subagents[0].Value -eq '2.10M') '子代理 Token 独立行不正确。'
+        Assert-Condition ($subagentsCost.Count -eq 1 -and $subagentsCost[0].ExpandedLabel -eq '子代理费用' -and $subagentsCost[0].Value -eq '$0.34') '子代理费用独立行不正确。'
 
         $snapshotType = $assembly.GetType('CodexTokenOverlay.TokenSnapshot', $true)
         $displayFieldType = $assembly.GetType('CodexTokenOverlay.DisplayField', $true)

@@ -105,6 +105,10 @@ internal static class OverlayPresentationBuilder
             DisplayField.Reasoning => "推理输出",
             DisplayField.Thread => "会话 ID",
             DisplayField.TotalCost => "估算总价",
+            DisplayField.MainAgent => "主代理 Token",
+            DisplayField.Subagents => "子代理 Token",
+            DisplayField.MainAgentCost => "主代理费用",
+            DisplayField.SubagentsCost => "子代理费用",
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
     }
@@ -144,6 +148,16 @@ internal static class OverlayPresentationBuilder
     {
         var labels = GetLabels(field);
         var cost = TokenCostEstimator.Estimate(snapshot);
+        var mainAgentUsages = snapshot.PricingUsages.Where(usage => usage.IsMainAgent).ToArray();
+        var subagentUsages = snapshot.PricingUsages.Where(usage => !usage.IsMainAgent).ToArray();
+        var mainAgent = CreateAgentBreakdown(mainAgentUsages, snapshot, isMainAgent: true);
+        var subagents = CreateAgentBreakdown(subagentUsages, snapshot, isMainAgent: false);
+        labels = field switch
+        {
+            DisplayField.MainAgent => (labels.Compact, $"主代理（{mainAgent.ModelText}）"),
+            DisplayField.Subagents => (labels.Compact, $"子代理（{subagents.ModelText}）"),
+            _ => labels
+        };
         var value = field switch
         {
             DisplayField.Total => FormatTokenCount(snapshot.TotalTokens),
@@ -157,6 +171,10 @@ internal static class OverlayPresentationBuilder
             DisplayField.Reasoning => FormatTokenCount(snapshot.ReasoningOutputTokens),
             DisplayField.Thread => ShortThreadId(snapshot.ThreadId),
             DisplayField.TotalCost => FormatUsd(cost.TotalCostUsd),
+            DisplayField.MainAgent => FormatTokenCount(mainAgent.TotalTokens),
+            DisplayField.MainAgentCost => FormatUsd(mainAgent.TotalCostUsd),
+            DisplayField.Subagents => FormatTokenCount(subagents.TotalTokens),
+            DisplayField.SubagentsCost => FormatUsd(subagents.TotalCostUsd),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
         var hasValue = field != DisplayField.Thread || !string.IsNullOrWhiteSpace(snapshot.ThreadId);
@@ -178,9 +196,42 @@ internal static class OverlayPresentationBuilder
             DisplayField.Reasoning => ("推理", "推理输出"),
             DisplayField.Thread => ("会话", "会话"),
             DisplayField.TotalCost => ("总价", "估算总价"),
+            DisplayField.MainAgent => ("主代理", "主代理"),
+            DisplayField.Subagents => ("子代理", "子代理"),
+            DisplayField.MainAgentCost => ("主费", "主代理费用"),
+            DisplayField.SubagentsCost => ("子费", "子代理费用"),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
     }
+
+    private static AgentBreakdown CreateAgentBreakdown(
+        IReadOnlyList<TokenPricingUsage> usages,
+        TokenSnapshot snapshot,
+        bool isMainAgent)
+    {
+        if (usages.Count == 0)
+        {
+            return isMainAgent
+                ? new AgentBreakdown("Sol", snapshot.TotalTokens, TokenCostEstimator.Estimate(snapshot).TotalCostUsd)
+                : new AgentBreakdown("无", 0, 0);
+        }
+
+        var modelGroups = usages
+            .GroupBy(
+                usage => usage.Model.Contains("luna", StringComparison.OrdinalIgnoreCase) ? "Luna" : "Sol",
+                StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var countText = string.Join("+", modelGroups.Select(group =>
+            isMainAgent && group.Count() == 1 ? group.Key : $"{group.Key}×{group.Count()}"));
+        var tokens = usages.Aggregate(0L, (sum, usage) =>
+            long.MaxValue - sum < Math.Max(0, usage.TotalTokens)
+                ? long.MaxValue
+                : sum + Math.Max(0, usage.TotalTokens));
+        var cost = TokenCostEstimator.Estimate(usages).TotalCostUsd;
+        return new AgentBreakdown(countText, tokens, cost);
+    }
+
+    private sealed record AgentBreakdown(string ModelText, long TotalTokens, decimal TotalCostUsd);
 
     private static string SanitizeSingleLine(string value)
     {

@@ -25,7 +25,11 @@ internal enum DisplayField
     Reasoning = 1 << 7,
     Thread = 1 << 8,
     CacheHitRate = 1 << 9,
-    TotalCost = 1 << 10
+    TotalCost = 1 << 10,
+    MainAgent = 1 << 11,
+    Subagents = 1 << 12,
+    MainAgentCost = 1 << 13,
+    SubagentsCost = 1 << 14
 }
 
 internal enum CollapsedSlot { Primary, Secondary }
@@ -36,11 +40,16 @@ internal static class DisplayFieldRules
         DisplayField.Total | DisplayField.Input | DisplayField.Output |
         DisplayField.CacheHit | DisplayField.CacheMiss | DisplayField.Context |
         DisplayField.ContextPercent | DisplayField.Reasoning | DisplayField.Thread |
-        DisplayField.CacheHitRate | DisplayField.TotalCost;
+        DisplayField.CacheHitRate | DisplayField.TotalCost |
+        DisplayField.MainAgent | DisplayField.Subagents |
+        DisplayField.MainAgentCost | DisplayField.SubagentsCost;
 
     public static readonly IReadOnlyList<DisplayField> Ordered = new[]
     {
-        DisplayField.Total, DisplayField.Input, DisplayField.Output,
+        DisplayField.Total,
+        DisplayField.MainAgent, DisplayField.MainAgentCost,
+        DisplayField.Subagents, DisplayField.SubagentsCost,
+        DisplayField.Input, DisplayField.Output,
         DisplayField.CacheHit, DisplayField.CacheHitRate, DisplayField.CacheMiss, DisplayField.Context,
         DisplayField.ContextPercent, DisplayField.Reasoning, DisplayField.Thread,
         DisplayField.TotalCost
@@ -87,6 +96,10 @@ internal sealed class OverlaySettings
         | DisplayField.CacheMiss
         | DisplayField.Context
         | DisplayField.ContextPercent
+        | DisplayField.MainAgent
+        | DisplayField.Subagents
+        | DisplayField.MainAgentCost
+        | DisplayField.SubagentsCost
         | DisplayField.TotalCost;
 
     private sealed class PersistedSettings
