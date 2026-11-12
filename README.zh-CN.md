@@ -191,7 +191,7 @@ swift test --package-path macos
 ./macos/script/package_app.sh \
   --arch "$(uname -m)" \
   --configuration release \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --output artifacts/macos-local
 ```
 
