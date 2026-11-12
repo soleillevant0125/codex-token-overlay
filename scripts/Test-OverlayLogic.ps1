@@ -1627,7 +1627,7 @@ try {
         Assert-Condition ($migrated.Settings.AnchorMode -eq 3) '旧设置迁移后未切换到标题栏右上。'
         Assert-Condition ($migrated.Settings.VisibleFields -eq 511) '旧设置迁移后未保留可见字段。'
         Assert-Condition ($migrated.Settings.CollapsedPrimaryField -eq 1) '旧设置迁移后左侧指标不正确。'
-        Assert-Condition ($migrated.Settings.CollapsedSecondaryField -eq 64) '旧设置迁移后右侧指标不正确。'
+        Assert-Condition ($migrated.Settings.CollapsedSecondaryField -eq 1024) '旧设置迁移后右侧指标不正确。'
         Assert-Condition ($migrated.MustPersist -eq $true) '旧设置迁移后必须立即持久化。'
 
         $currentOldAnchor = Get-ProbeCase $response 'keep-current-old-anchor'
@@ -1656,7 +1656,7 @@ try {
         Assert-Condition ($missing.Settings.SettingsVersion -eq 1) '缺少设置文件时未使用当前版本默认值。'
         Assert-Condition ($missing.Settings.AnchorMode -eq 3) '缺少设置文件时默认吸附模式不正确。'
         Assert-Condition ($missing.Settings.CollapsedPrimaryField -eq 1) '缺少设置文件时默认左侧指标不正确。'
-        Assert-Condition ($missing.Settings.CollapsedSecondaryField -eq 64) '缺少设置文件时默认右侧指标不正确。'
+        Assert-Condition ($missing.Settings.CollapsedSecondaryField -eq 1024) '缺少设置文件时默认右侧指标不正确。'
         Assert-Condition ($missing.Settings.ManualPlacementEnabled -eq $true) '缺少设置文件时必须启用默认手动放置。'
         Assert-Condition ($missing.Settings.MainAttachment.ReferencePoint -eq 2) '缺少设置文件时默认主窗口参考点不正确。'
         Assert-Condition ($missing.Settings.MainAttachment.OffsetXDip -eq -344 -and $missing.Settings.MainAttachment.OffsetYDip -eq 24) '缺少设置文件时默认主窗口偏移不正确。'
@@ -1758,7 +1758,7 @@ try {
         Assert-Condition ($invalidJson.Settings.SettingsVersion -eq 1) '损坏 JSON 未回退到当前默认版本。'
         Assert-Condition ($invalidJson.Settings.AnchorMode -eq 3) '损坏 JSON 未回退到默认吸附模式。'
         Assert-Condition ($invalidJson.Settings.CollapsedPrimaryField -eq 1) '损坏 JSON 未回退到默认左侧指标。'
-        Assert-Condition ($invalidJson.Settings.CollapsedSecondaryField -eq 64) '损坏 JSON 未回退到默认右侧指标。'
+        Assert-Condition ($invalidJson.Settings.CollapsedSecondaryField -eq 1024) '损坏 JSON 未回退到默认右侧指标。'
     }
 
     if ($areas -contains 'Presentation') {
@@ -1794,6 +1794,7 @@ try {
             @{ Name = 'cache-miss'; Field = 16; CompactLabel = '未中'; ExpandedLabel = '缓存未命中'; Value = '50.7k' },
             @{ Name = 'context'; Field = 32; CompactLabel = '上下文'; ExpandedLabel = '上下文用量'; Value = '62.0k / 200.0k' },
             @{ Name = 'context-percent'; Field = 64; CompactLabel = '上下文'; ExpandedLabel = '上下文占用'; Value = '31%' },
+            @{ Name = 'context-remaining'; Field = 1024; CompactLabel = '剩余'; ExpandedLabel = '上下文剩余'; Value = '69.0%' },
             @{ Name = 'reasoning'; Field = 128; CompactLabel = '推理'; ExpandedLabel = '推理输出'; Value = '6.5k' },
             @{ Name = 'thread'; Field = 256; CompactLabel = '会话'; ExpandedLabel = '会话'; Value = '1111…555555' },
             @{ Name = 'cache-hit-rate'; Field = 512; CompactLabel = '命中率'; ExpandedLabel = '缓存命中率'; Value = '38%' }
@@ -1967,7 +1968,7 @@ try {
 
         $zero = (Get-ProbeCase $response 'valid-zero').Presentation
         Assert-Condition ($zero.Primary.Value -eq '0' -and $zero.Primary.HasValue -eq $true) '合法的数值零应显示为 0。'
-        Assert-Condition ($zero.Secondary.Value -eq '0%' -and $zero.Secondary.HasValue -eq $true) '合法的上下文百分比零应有值。'
+        Assert-Condition ($zero.Secondary.Value -eq '—' -and $zero.Secondary.HasValue -eq $false) '上下文窗口未知时不能显示零占用。'
 
         $waiting = (Get-ProbeCase $response 'waiting').Presentation
         Assert-Condition ($waiting.StatusText -eq '正在等待会话数据') '等待态状态文本不正确。'

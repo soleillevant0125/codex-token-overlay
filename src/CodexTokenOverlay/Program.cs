@@ -809,7 +809,7 @@ internal sealed class TokenLogMonitor : IDisposable
                     GetLong(total, "cached_input_tokens"),
                     GetLong(total, "output_tokens"),
                     GetLong(total, "reasoning_output_tokens"),
-                    GetLong(last, "total_tokens"),
+                    GetLong(last, "input_tokens"),
                     GetLong(info, "model_context_window"),
                     writeUtc);
             }

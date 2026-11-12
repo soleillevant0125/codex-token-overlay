@@ -18,6 +18,38 @@ Codex Token Overlay is a read-only desktop companion that shows token usage for 
 - Falls back to the newest root Codex Desktop session when internal IPC is unavailable.
 - Reads local files only; it has no telemetry, analytics, network API, or upload feature.
 
+## Windows context remaining and alerts
+
+The Windows overlay now offers a **Context remaining** metric (one decimal place),
+shown in the right collapsed slot for new settings. Existing saved field choices
+are preserved. The context metric uses the latest request's **input tokens**;
+accumulated usage and response output are not counted as the current input context.
+Missing context-window data displays an em dash instead of a misleading percentage.
+
+Remaining context of 20%, 10%, and 5% triggers a Windows tray notification. Alerts
+are independent per thread and do not repeat for every log update or task switch.
+Jumping across multiple thresholds produces only the most severe notification.
+A threshold rearms after recovery exceeds it by three percentage points, supporting
+compaction without notification noise near a boundary. Deduplication lasts until
+application exit. Windows notification settings may suppress notifications.
+
+Use **上下文不足提醒** in the tray menu to toggle alerts. To change thresholds, exit
+the overlay, edit `ContextAlertThresholds` in the settings JSON, and restart:
+
+```json
+"ContextAlertsEnabled": true,
+"ContextAlertThresholds": [20, 10, 5]
+```
+
+Automatic alerts require a matching active-thread IPC route, or an explicitly
+pinned session. They are suppressed when the overlay falls back to the latest log
+without identifying the selected thread. Values are snapshots of the latest model
+request, not predictions of the next request or exact compaction timing.
+
+This builds on the original project's existing task routing and local-only data
+collection. These additions currently apply to Windows; macOS is unchanged.
+See the [Chinese development notes](README.context-monitor.zh-CN.md).
+
 ## Downloads
 
 Download the newest ZIP from [GitHub Releases](../../releases).

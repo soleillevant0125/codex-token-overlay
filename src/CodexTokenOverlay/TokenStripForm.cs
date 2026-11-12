@@ -918,8 +918,10 @@ internal sealed class TokenStripForm : Form
     }
 
     private Color ValueColorFor(OverlayMetric metric) =>
-        metric.Field is DisplayField.Context or DisplayField.ContextPercent
-            ? _palette.Accent
+        metric.Field is DisplayField.Context or DisplayField.ContextPercent or DisplayField.ContextRemaining
+            ? (_presentation.ContextPercent >= 95 ? Color.OrangeRed
+                : _presentation.ContextPercent >= 90 ? Color.DarkOrange
+                : _presentation.ContextPercent >= 80 ? Color.Goldenrod : _palette.Accent)
             : _palette.Value;
 
     private static GraphicsPath CreateRoundedRectanglePath(Rectangle rectangle, int radius)

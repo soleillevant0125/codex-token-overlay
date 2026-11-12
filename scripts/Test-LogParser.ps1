@@ -25,14 +25,14 @@ try {
 
     # 只使用合成数据，测试仓库不会包含任何真实 Codex 会话内容。
     $sessionMeta = '{"type":"session_meta","payload":{"originator":"Codex Desktop","source":"vscode"}}'
-    $tokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12345,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":2345,"reasoning_output_tokens":345},"last_token_usage":{"total_tokens":2048},"model_context_window":128000}}}'
+    $tokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12345,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":2345,"reasoning_output_tokens":345},"last_token_usage":{"total_tokens":2300,"input_tokens":2048},"model_context_window":128000}}}'
     [System.IO.File]::WriteAllLines(
         $sessionPath,
         [string[]]@($sessionMeta, $tokenEvent),
         [System.Text.UTF8Encoding]::new($false))
 
-    $threadATokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":11111,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":1111,"reasoning_output_tokens":111},"last_token_usage":{"total_tokens":1024},"model_context_window":128000}}}'
-    $threadBTokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":22222,"input_tokens":20000,"cached_input_tokens":14000,"output_tokens":2222,"reasoning_output_tokens":222},"last_token_usage":{"total_tokens":2048},"model_context_window":128000}}}'
+    $threadATokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":11111,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":1111,"reasoning_output_tokens":111},"last_token_usage":{"total_tokens":1200,"input_tokens":1024},"model_context_window":128000}}}'
+    $threadBTokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":22222,"input_tokens":20000,"cached_input_tokens":14000,"output_tokens":2222,"reasoning_output_tokens":222},"last_token_usage":{"total_tokens":2300,"input_tokens":2048},"model_context_window":128000}}}'
     [System.IO.File]::WriteAllLines(
         $threadAPath,
         [string[]]@($sessionMeta, $threadATokenEvent),

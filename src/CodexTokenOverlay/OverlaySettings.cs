@@ -24,7 +24,8 @@ internal enum DisplayField
     ContextPercent = 1 << 6,
     Reasoning = 1 << 7,
     Thread = 1 << 8,
-    CacheHitRate = 1 << 9
+    CacheHitRate = 1 << 9,
+    ContextRemaining = 1 << 10
 }
 
 internal enum CollapsedSlot { Primary, Secondary }
@@ -35,13 +36,13 @@ internal static class DisplayFieldRules
         DisplayField.Total | DisplayField.Input | DisplayField.Output |
         DisplayField.CacheHit | DisplayField.CacheMiss | DisplayField.Context |
         DisplayField.ContextPercent | DisplayField.Reasoning | DisplayField.Thread |
-        DisplayField.CacheHitRate;
+        DisplayField.CacheHitRate | DisplayField.ContextRemaining;
 
     public static readonly IReadOnlyList<DisplayField> Ordered = new[]
     {
         DisplayField.Total, DisplayField.Input, DisplayField.Output,
         DisplayField.CacheHit, DisplayField.CacheHitRate, DisplayField.CacheMiss, DisplayField.Context,
-        DisplayField.ContextPercent, DisplayField.Reasoning, DisplayField.Thread
+        DisplayField.ContextPercent, DisplayField.ContextRemaining, DisplayField.Reasoning, DisplayField.Thread
     };
 
     public static bool IsSingleSupported(DisplayField field)
@@ -84,10 +85,12 @@ internal sealed class OverlaySettings
         | DisplayField.CacheHitRate
         | DisplayField.CacheMiss
         | DisplayField.Context
-        | DisplayField.ContextPercent;
+        | DisplayField.ContextPercent | DisplayField.ContextRemaining;
 
     private sealed class PersistedSettings
     {
+        public bool? ContextAlertsEnabled { get; set; }
+        public double[]? ContextAlertThresholds { get; set; }
         public int? SettingsVersion { get; set; }
         public int? AnchorMode { get; set; }
         public int? VisibleFields { get; set; }
@@ -105,6 +108,8 @@ internal sealed class OverlaySettings
         public double? OffsetYDip { get; set; }
     }
 
+    public bool ContextAlertsEnabled { get; set; } = true;
+    public double[] ContextAlertThresholds { get; set; } = new double[] { 20, 10, 5 };
     public const int CurrentSettingsVersion = 1;
     public int SettingsVersion { get; private set; }
     public AnchorMode AnchorMode { get; set; }
@@ -123,7 +128,7 @@ internal sealed class OverlaySettings
             AnchorMode = AnchorMode.TitleBarTopRight,
             VisibleFields = DefaultVisibleFields,
             CollapsedPrimaryField = DisplayField.Total,
-            CollapsedSecondaryField = DisplayField.ContextPercent,
+            CollapsedSecondaryField = DisplayField.ContextRemaining,
             ManualPlacementEnabled = true,
             MainAttachment = ManualAttachmentRules.DefaultMainAttachment,
             OverlayScalePercent = ManualAttachmentRules.DefaultScalePercent
@@ -179,6 +184,8 @@ internal sealed class OverlaySettings
             }
 
             var settings = CreateDefault();
+            settings.ContextAlertsEnabled = persisted.ContextAlertsEnabled ?? true;
+            settings.ContextAlertThresholds = persisted.ContextAlertThresholds ?? new double[] { 20, 10, 5 };
             settings.AnchorMode = SanitizeAnchorMode(persisted.AnchorMode);
             settings.VisibleFields = DisplayFieldRules.SanitizeVisible(
                 (DisplayField)(persisted.VisibleFields ?? (int)DefaultVisibleFields));
@@ -204,6 +211,8 @@ internal sealed class OverlaySettings
         var persisted = new PersistedSettings
         {
             SettingsVersion = CurrentSettingsVersion,
+            ContextAlertsEnabled = ContextAlertsEnabled,
+            ContextAlertThresholds = ContextAlertThresholds,
             AnchorMode = (int)SanitizeAnchorMode((int)AnchorMode),
             VisibleFields = (int)DisplayFieldRules.SanitizeVisible(VisibleFields),
             CollapsedPrimaryField = (int)CollapsedPrimaryField,

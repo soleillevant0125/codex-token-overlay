@@ -43,6 +43,11 @@ jobs:
         shell: pwsh
         run: .\scripts\Test-OverlayLogic.ps1
 
+      - name: Test per-thread context alert thresholds
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: dotnet run --project tests/ContextAlerts -c Release
+
       - name: Test log parsing and CODEX_HOME discovery
         if: matrix.rid == 'win-x64'
         shell: pwsh

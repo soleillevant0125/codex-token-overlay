@@ -5,6 +5,7 @@ namespace CodexTokenOverlay;
 internal sealed class OverlayContext : ApplicationContext
 {
     private readonly OverlaySettings _settings;
+    private readonly ContextAlertTracker _contextAlerts = new();
     private readonly CodexIpcActiveThreadMonitor _routeMonitor = new();
     private readonly TokenLogMonitor _monitor;
     private readonly TokenStripForm _form = new();
@@ -136,6 +137,9 @@ internal sealed class OverlayContext : ApplicationContext
         };
         menu.Items.Add(_visibilityMenuItem);
 
+        var alertItem = new ToolStripMenuItem("上下文不足提醒") { CheckOnClick = true, Checked = _settings.ContextAlertsEnabled };
+        alertItem.CheckedChanged += (_, _) => { _settings.ContextAlertsEnabled = alertItem.Checked; _settings.Save(_settingsPath); };
+        menu.Items.Add(alertItem);
         var exitItem = new ToolStripMenuItem("退出");
         exitItem.Click += (_, _) => ExitOverlay();
         menu.Items.Add(exitItem);
@@ -334,6 +338,19 @@ internal sealed class OverlayContext : ApplicationContext
         if (snapshot is not null && snapshot != _lastSnapshot)
         {
             _lastSnapshot = snapshot;
+            if (_settings.ContextAlertsEnabled && (_monitor.PinActiveSession ||
+                (_pendingRouteStatus.IsConnected && string.Equals(_pendingRouteStatus.ThreadId, snapshot.ThreadId, StringComparison.OrdinalIgnoreCase))))
+            {
+                var threshold = _contextAlerts.Observe(snapshot.ThreadId, snapshot.ContextUsedTokens,
+                    snapshot.ContextWindowTokens, snapshot.UpdatedAtUtc, _settings.ContextAlertThresholds);
+                if (threshold is not null)
+                {
+                    var left = Math.Clamp(100 - snapshot.ContextPercent, 0, 100);
+                    _trayIcon.ShowBalloonTip(10000, "Codex 上下文不足",
+                        $"会话 {OverlayPresentationBuilder.ShortThreadId(snapshot.ThreadId)}：上下文剩余 {left:0.0}%。建议保存当前结论与待办，准备压缩或新开对话。",
+                        threshold <= 5 ? ToolTipIcon.Error : ToolTipIcon.Warning);
+                }
+            }
             RefreshPresentation();
             var shortId = OverlayPresentationBuilder.ShortThreadId(snapshot.ThreadId);
             _pinSessionMenuItem.Enabled = true;
