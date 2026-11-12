@@ -45,7 +45,7 @@ internal static class OverlayPresentationBuilder
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ValidateHighlightedFields(primaryField, secondaryField);
-        var contextPercent = Math.Clamp(snapshot.ContextPercent, 0, 100);
+        var contextPercent = snapshot.ContextPercent;
         return new OverlayPresentation(
             CreateMetric(snapshot, primaryField, contextPercent),
             CreateMetric(snapshot, secondaryField, contextPercent),
@@ -55,7 +55,7 @@ internal static class OverlayPresentationBuilder
                 secondaryField,
                 field => CreateMetric(snapshot, field, contextPercent)),
             contextPercent,
-            snapshot.ContextWindowTokens > 0 && (visibleFields & (DisplayField.ContextPercent | DisplayField.ContextRemaining)) != 0,
+            snapshot.HasContextUsage && (visibleFields & (DisplayField.ContextPercent | DisplayField.ContextRemaining)) != 0,
             null);
     }
 
@@ -140,6 +140,12 @@ internal static class OverlayPresentationBuilder
         double contextPercent)
     {
         var labels = GetLabels(field);
+        if (field is DisplayField.Context or DisplayField.ContextPercent or DisplayField.ContextRemaining
+            && !snapshot.HasContextUsage)
+        {
+            return new OverlayMetric(field, labels.Compact, labels.Expanded, NoValue, false);
+        }
+
         var value = field switch
         {
             DisplayField.Total => FormatTokenCount(snapshot.TotalTokens),
@@ -149,14 +155,13 @@ internal static class OverlayPresentationBuilder
             DisplayField.CacheHitRate => $"{snapshot.CacheHitPercent:0}%",
             DisplayField.CacheMiss => FormatTokenCount(snapshot.UncachedInputTokens),
             DisplayField.Context => $"{FormatTokenCount(snapshot.ContextUsedTokens)} / {FormatTokenCount(snapshot.ContextWindowTokens)}",
-            DisplayField.ContextRemaining => snapshot.ContextWindowTokens > 0 ? $"{100 - contextPercent:0.0}%" : NoValue,
-            DisplayField.ContextPercent => snapshot.ContextWindowTokens > 0 ? $"{contextPercent:0}%" : NoValue,
+            DisplayField.ContextRemaining => $"{100 - contextPercent:0.0}%",
+            DisplayField.ContextPercent => $"{contextPercent:0}%",
             DisplayField.Reasoning => FormatTokenCount(snapshot.ReasoningOutputTokens),
             DisplayField.Thread => ShortThreadId(snapshot.ThreadId),
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "不支持的展示字段。")
         };
-        var hasValue = (field != DisplayField.Thread || !string.IsNullOrWhiteSpace(snapshot.ThreadId)) &&
-            (!(field is DisplayField.ContextPercent or DisplayField.ContextRemaining or DisplayField.Context) || snapshot.ContextWindowTokens > 0);
+        var hasValue = field != DisplayField.Thread || !string.IsNullOrWhiteSpace(snapshot.ThreadId);
         return new OverlayMetric(field, labels.Compact, labels.Expanded, value, hasValue);
     }
 

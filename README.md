@@ -22,9 +22,9 @@ Codex Token Overlay is a read-only desktop companion that shows token usage for 
 
 The Windows overlay now offers a **Context remaining** metric (one decimal place),
 shown in the right collapsed slot for new settings. Existing saved field choices
-are preserved. The context metric uses the latest request's **input tokens**;
-accumulated usage and response output are not counted as the current input context.
-Missing context-window data displays an em dash instead of a misleading percentage.
+are preserved. The context metric divides the latest model request's total tokens
+by the full context window reported in the log. Missing usage or window data
+displays an em dash while cumulative metrics continue to update.
 
 Remaining context of 20%, 10%, and 5% triggers a Windows tray notification. Alerts
 are independent per thread and do not repeat for every log update or task switch.
@@ -43,8 +43,9 @@ the overlay, edit `ContextAlertThresholds` in the settings JSON, and restart:
 
 Automatic alerts require a matching active-thread IPC route, or an explicitly
 pinned session. They are suppressed when the overlay falls back to the latest log
-without identifying the selected thread. Values are snapshots of the latest model
-request, not predictions of the next request or exact compaction timing.
+without identifying the selected thread. The tray marks whether the displayed
+session is synced, pinned, or selected from logs. Values are snapshots of the
+latest model request and can differ from Codex's own context indicator.
 
 This builds on the original project's existing task routing and local-only data
 collection. These additions currently apply to Windows; macOS is unchanged.

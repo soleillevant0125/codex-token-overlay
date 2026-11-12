@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Windows context-remaining metric and per-session low-context notifications at configurable thresholds.
+
+### Fixed
+
+- Windows uses the latest model request's total tokens for context usage, matching the macOS overlay. Missing usage or window data shows an em dash while cumulative metrics continue to update.
+- Windows evaluates the current snapshot when a session is pinned or its IPC route becomes active. The tray identifies whether the displayed session is synced, pinned, or selected from logs.
+- Windows uses the token event timestamp for alert deduplication and refreshes the fallback session immediately after losing an active IPC route.
+
 ## [0.3.0] - 2026-08-13
 
 ### Added

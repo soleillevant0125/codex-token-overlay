@@ -25,7 +25,7 @@ try {
 
     # 只使用合成数据，测试仓库不会包含任何真实 Codex 会话内容。
     $sessionMeta = '{"type":"session_meta","payload":{"originator":"Codex Desktop","source":"vscode"}}'
-    $tokenEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12345,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":2345,"reasoning_output_tokens":345},"last_token_usage":{"total_tokens":2300,"input_tokens":2048},"model_context_window":128000}}}'
+    $tokenEvent = '{"timestamp":"2026-07-17T00:00:01.123456789Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12345,"input_tokens":10000,"cached_input_tokens":7000,"output_tokens":2345,"reasoning_output_tokens":345},"last_token_usage":{"total_tokens":2300,"input_tokens":2048},"model_context_window":128000}}}'
     [System.IO.File]::WriteAllLines(
         $sessionPath,
         [string[]]@($sessionMeta, $tokenEvent),
@@ -123,8 +123,10 @@ try {
         $snapshot.CachedInputTokens -eq 7000
         $snapshot.OutputTokens -eq 2345
         $snapshot.ReasoningOutputTokens -eq 345
-        $snapshot.ContextUsedTokens -eq 2048
+        $snapshot.ContextUsedTokens -eq 2300
         $snapshot.ContextWindowTokens -eq 128000
+        $snapshot.HasContextUsage -eq $true
+        ([DateTimeOffset]$snapshot.UpdatedAtUtc).UtcDateTime -eq ([DateTimeOffset]'2026-07-17T00:00:01.1234567Z').UtcDateTime
         $snapshot.UncachedInputTokens -eq 3000
     )
     if ($checks -contains $false) {
@@ -141,6 +143,25 @@ try {
     $autoDiscoveredSnapshot = Get-Content -LiteralPath $probePath -Encoding UTF8 -Raw | ConvertFrom-Json
     if ($autoDiscoveredSnapshot.ThreadId -ne $threadId -or $autoDiscoveredSnapshot.TotalTokens -ne 12345) {
         throw "CODEX_HOME 自动发现结果不正确。"
+    }
+
+    $unknownUsageEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12400},"last_token_usage":{"input_tokens":2048,"total_tokens":null},"model_context_window":128000}}}'
+    $unknownWindowEvent = '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12500},"last_token_usage":{"total_tokens":2400},"model_context_window":null}}}'
+    foreach ($case in @(
+        @{ Name = 'unknown-usage'; Event = $unknownUsageEvent; Total = 12400; Used = -1; Window = 128000 },
+        @{ Name = 'unknown-window'; Event = $unknownWindowEvent; Total = 12500; Used = 2400; Window = 0 }
+    )) {
+        [System.IO.File]::AppendAllLines($sessionPath, [string[]]@($case.Event))
+        $caseProbePath = Join-Path $testRoot "$($case.Name).json"
+        & $DotnetPath $applicationDll --probe $caseProbePath $threadId
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $caseProbePath)) {
+            throw "缺失上下文数据的探针执行失败：$($case.Name)"
+        }
+        $caseSnapshot = Get-Content -LiteralPath $caseProbePath -Encoding UTF8 -Raw | ConvertFrom-Json
+        if ($caseSnapshot.TotalTokens -ne $case.Total -or $caseSnapshot.HasContextUsage -ne $false -or
+            $caseSnapshot.ContextUsedTokens -ne $case.Used -or $caseSnapshot.ContextWindowTokens -ne $case.Window) {
+            throw "缺失上下文数据时应保留最新累计值并标记占用未知：$($case.Name)"
+        }
     }
 
     Write-Host "日志解析测试通过。"

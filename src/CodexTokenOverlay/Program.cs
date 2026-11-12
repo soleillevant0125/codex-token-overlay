@@ -91,9 +91,11 @@ internal sealed record TokenSnapshot(
     long ContextWindowTokens,
     DateTime UpdatedAtUtc)
 {
-    public double ContextPercent => ContextWindowTokens <= 0
-        ? 0
-        : Math.Clamp(ContextUsedTokens * 100d / ContextWindowTokens, 0, 100);
+    public bool HasContextUsage => ContextUsedTokens >= 0 && ContextWindowTokens > 0;
+
+    public double ContextPercent => HasContextUsage
+        ? Math.Clamp(ContextUsedTokens * 100d / ContextWindowTokens, 0, 100)
+        : 0;
 
     public double CacheHitPercent => InputTokens <= 0
         ? 0d
@@ -654,13 +656,16 @@ internal sealed class TokenLogMonitor : IDisposable
 
             using var document = JsonDocument.Parse(firstLine);
             var root = document.RootElement;
-            if (!root.TryGetProperty("type", out var type) || type.GetString() != "session_meta")
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var type)
+                || type.ValueKind != JsonValueKind.String
+                || type.GetString() != "session_meta")
             {
                 _rootSessionCache[path] = false;
                 return false;
             }
 
-            if (!root.TryGetProperty("payload", out var payload))
+            if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
             {
                 _rootSessionCache[path] = false;
                 return false;
@@ -774,7 +779,8 @@ internal sealed class TokenLogMonitor : IDisposable
             {
                 using var document = JsonDocument.Parse(line);
                 var root = document.RootElement;
-                if (!root.TryGetProperty("type", out var eventType)
+                if (root.ValueKind != JsonValueKind.Object
+                    || !root.TryGetProperty("type", out var eventType)
                     || eventType.ValueKind != JsonValueKind.String
                     || eventType.GetString() != "event_msg")
                 {
@@ -793,27 +799,30 @@ internal sealed class TokenLogMonitor : IDisposable
                 }
 
                 if (!info.TryGetProperty("total_token_usage", out var total)
-                    || total.ValueKind != JsonValueKind.Object
-                    || !info.TryGetProperty("last_token_usage", out var last)
-                    || last.ValueKind != JsonValueKind.Object)
+                    || total.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                var threadId = ExtractThreadId(path);
+                info.TryGetProperty("last_token_usage", out var last);
+                var updatedAtUtc = root.TryGetProperty("timestamp", out var timestamp)
+                    && timestamp.ValueKind == JsonValueKind.String
+                    && timestamp.TryGetDateTimeOffset(out var eventTime)
+                    ? eventTime.UtcDateTime
+                    : writeUtc;
                 return new TokenSnapshot(
-                    threadId,
+                    ExtractThreadId(path),
                     path,
                     GetLong(total, "total_tokens"),
                     GetLong(total, "input_tokens"),
                     GetLong(total, "cached_input_tokens"),
                     GetLong(total, "output_tokens"),
                     GetLong(total, "reasoning_output_tokens"),
-                    GetLong(last, "input_tokens"),
+                    GetLong(last, "total_tokens", fallback: -1),
                     GetLong(info, "model_context_window"),
-                    writeUtc);
+                    updatedAtUtc);
             }
-            catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+            catch (JsonException)
             {
                 // Codex 可能正在追加最后一行；继续寻找前一个完整快照。
             }
@@ -822,11 +831,15 @@ internal sealed class TokenLogMonitor : IDisposable
         return null;
     }
 
-    private static long GetLong(JsonElement element, string propertyName)
+    private static long GetLong(JsonElement element, string propertyName, long fallback = 0)
     {
-        return element.TryGetProperty(propertyName, out var property) && property.TryGetInt64(out var value)
+        return element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(propertyName, out var property)
+            && property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt64(out var value)
+            && value >= 0
             ? value
-            : 0;
+            : fallback;
     }
 
     private static string ExtractThreadId(string path)

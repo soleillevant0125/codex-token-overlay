@@ -1995,8 +1995,12 @@ try {
 
         foreach ($contextCase in @('context-below-zero', 'context-zero', 'context-hundred', 'context-above-hundred')) {
             $presentation = Get-ProbeCase $response $contextCase | Select-Object -ExpandProperty Presentation
+            if ($contextCase -eq 'context-below-zero') {
+                Assert-Condition ($presentation.Primary.Value -eq '—' -and -not $presentation.Primary.HasValue) '未知上下文应显示破折号。'
+                Assert-Condition (-not $presentation.ShowContextProgress) '未知上下文不应显示进度。'
+                continue
+            }
             $expectedPercent = switch ($contextCase) {
-                'context-below-zero' { 0 }
                 'context-zero' { 0 }
                 'context-hundred' { 100 }
                 'context-above-hundred' { 100 }

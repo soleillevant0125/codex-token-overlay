@@ -71,6 +71,7 @@ internal sealed class OverlayContext : ApplicationContext
         {
             _monitor.PinActiveSession = _pinSessionMenuItem.Checked;
             _pinSessionMenuItem.Text = _pinSessionMenuItem.Checked ? "已锁定当前会话" : "锁定当前会话";
+            UpdateSessionMenuText();
         };
         menu.Items.Add(_pinSessionMenuItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -324,7 +325,7 @@ internal sealed class OverlayContext : ApplicationContext
             var shortPendingId = string.IsNullOrWhiteSpace(_pendingThreadId)
                 ? "等待识别"
                 : OverlayPresentationBuilder.ShortThreadId(_pendingThreadId);
-            _pinSessionMenuItem.Enabled = !string.IsNullOrWhiteSpace(_pendingThreadId);
+            _pinSessionMenuItem.Enabled = _pinSessionMenuItem.Checked;
             _presentation = OverlayPresentationBuilder.CreateWaiting(
                 $"等待会话 {shortPendingId} 的 token 数据…",
                 _settings.CollapsedPrimaryField,
@@ -338,19 +339,6 @@ internal sealed class OverlayContext : ApplicationContext
         if (snapshot is not null && snapshot != _lastSnapshot)
         {
             _lastSnapshot = snapshot;
-            if (_settings.ContextAlertsEnabled && (_monitor.PinActiveSession ||
-                (_pendingRouteStatus.IsConnected && string.Equals(_pendingRouteStatus.ThreadId, snapshot.ThreadId, StringComparison.OrdinalIgnoreCase))))
-            {
-                var threshold = _contextAlerts.Observe(snapshot.ThreadId, snapshot.ContextUsedTokens,
-                    snapshot.ContextWindowTokens, snapshot.UpdatedAtUtc, _settings.ContextAlertThresholds);
-                if (threshold is not null)
-                {
-                    var left = Math.Clamp(100 - snapshot.ContextPercent, 0, 100);
-                    _trayIcon.ShowBalloonTip(10000, "Codex 上下文不足",
-                        $"会话 {OverlayPresentationBuilder.ShortThreadId(snapshot.ThreadId)}：上下文剩余 {left:0.0}%。建议保存当前结论与待办，准备压缩或新开对话。",
-                        threshold <= 5 ? ToolTipIcon.Error : ToolTipIcon.Warning);
-                }
-            }
             RefreshPresentation();
             var shortId = OverlayPresentationBuilder.ShortThreadId(snapshot.ThreadId);
             _pinSessionMenuItem.Enabled = true;
@@ -358,6 +346,7 @@ internal sealed class OverlayContext : ApplicationContext
                 $"Codex {shortId} · {OverlayPresentationBuilder.FormatTokenCount(snapshot.TotalTokens)} tokens");
             UpdateSessionMenuText();
         }
+        CheckContextAlert(snapshot);
 
         if (_manualAttachment.IsEditing)
         {
@@ -410,18 +399,20 @@ internal sealed class OverlayContext : ApplicationContext
         _ = Task.Run(() =>
             {
                 var routeStatus = _routeMonitor.GetStatus();
+                var resumeLogFallback = false;
                 if (!_monitor.PinActiveSession)
                 {
                     if (!string.IsNullOrWhiteSpace(routeStatus.ThreadId))
                     {
                         _monitor.PreferredThreadId = routeStatus.ThreadId;
                     }
-                    else if (!routeStatus.IsConnected)
+                    else if (!routeStatus.IsConnected && _monitor.PreferredThreadId is not null)
                     {
                         _monitor.PreferredThreadId = null;
+                        resumeLogFallback = true;
                     }
                 }
-                var snapshot = _monitor.Poll();
+                var snapshot = _monitor.Poll(forceFullScan: resumeLogFallback);
                 return (
                     Snapshot: snapshot,
                     Version: _monitor.ActiveSessionVersion,
@@ -918,7 +909,38 @@ internal sealed class OverlayContext : ApplicationContext
         var shortId = string.IsNullOrWhiteSpace(threadId)
             ? "等待识别"
             : OverlayPresentationBuilder.ShortThreadId(threadId);
-        _sessionMenuItem.Text = $"会话：{shortId}{RouteStatusSuffix(_pendingRouteStatus)}";
+        var routeText = _pinSessionMenuItem.Checked ? "已锁定"
+            : HasMatchingRoute(threadId) ? "已同步"
+            : "日志模式";
+        var windowCount = _pendingRouteStatus.ActiveWindowCount;
+        var windowText = windowCount > 1 ? $" · 多窗口 {windowCount}" : string.Empty;
+        _sessionMenuItem.Text = $"会话：{shortId} · {routeText}{windowText}";
+    }
+
+    private bool HasMatchingRoute(string? threadId) =>
+        _pendingRouteStatus.IsConnected
+        && threadId is not null
+        && string.Equals(_pendingRouteStatus.ThreadId, threadId, StringComparison.OrdinalIgnoreCase);
+
+    private void CheckContextAlert(TokenSnapshot? snapshot)
+    {
+        if (snapshot is null || !snapshot.HasContextUsage || !_settings.ContextAlertsEnabled
+            || (!_pinSessionMenuItem.Checked && !HasMatchingRoute(snapshot.ThreadId)))
+        {
+            return;
+        }
+
+        var threshold = _contextAlerts.Observe(
+            snapshot.ThreadId, snapshot.ContextUsedTokens, snapshot.ContextWindowTokens,
+            snapshot.UpdatedAtUtc, _settings.ContextAlertThresholds);
+        if (threshold is not null)
+        {
+            var remaining = 100 - snapshot.ContextPercent;
+            var threadId = OverlayPresentationBuilder.ShortThreadId(snapshot.ThreadId);
+            _trayIcon.ShowBalloonTip(10000, "Codex 上下文不足",
+                $"会话 {threadId}：上下文剩余 {remaining:0.0}%。建议保存当前结论与待办，准备压缩或新开对话。",
+                threshold <= 5 ? ToolTipIcon.Error : ToolTipIcon.Warning);
+        }
     }
 
     private void ApplyTheme(OverlayThemePalette palette)
@@ -929,15 +951,6 @@ internal sealed class OverlayContext : ApplicationContext
 
     private static string TrimTrayText(string value) =>
         value.Length <= 63 ? value : value[..63];
-
-    private static string RouteStatusSuffix(ActiveThreadRouteStatus status)
-    {
-        if (status.ActiveWindowCount > 1)
-        {
-            return $" · 多窗口 {status.ActiveWindowCount}";
-        }
-        return status.IsConnected ? " · 已同步" : " · 日志模式";
-    }
 
     private void ExitOverlay()
     {

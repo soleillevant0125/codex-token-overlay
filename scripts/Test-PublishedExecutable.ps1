@@ -59,7 +59,7 @@ try {
         $snapshot.UncachedInputTokens -eq 3000
         $snapshot.OutputTokens -eq 2345
         $snapshot.ReasoningOutputTokens -eq 345
-        $snapshot.ContextUsedTokens -eq 2048
+        $snapshot.ContextUsedTokens -eq 2300
         $snapshot.ContextWindowTokens -eq 128000
     )
     if ($checks -contains $false) {
